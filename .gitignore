@@ -1,0 +1,21 @@
+﻿## .NET and Build Artifacts
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## Visual Studio & VS Code
+.vs/
+.vscode/
+*.ide/
+
+## OS Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+## Logs & Cache
+*.log
+scratch/
