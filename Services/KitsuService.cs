@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
@@ -19,6 +20,9 @@ namespace LiveChartTracker.Services
         private readonly HttpClient _httpClient;
         private const string KitsuBaseUrl = "https://kitsu.app/api/edge";
 
+        private const string GraphQlEndpoint = "https://graphql.anilist.co";
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTimeOffset cachedAt, JsonNode? data)> _kitsuGqlCache = new();
+
         public KitsuService(HttpClient httpClient)
         {
             _httpClient = httpClient;
@@ -28,7 +32,7 @@ namespace LiveChartTracker.Services
             }
             if (!_httpClient.DefaultRequestHeaders.Contains("User-Agent"))
             {
-                _httpClient.DefaultRequestHeaders.Add("User-Agent", "LiveChartAnimeTracker/1.0");
+                _httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
             }
         }
 
@@ -42,7 +46,7 @@ namespace LiveChartTracker.Services
             var users = userJson?["data"]?.AsArray();
             if (users == null || users.Count == 0)
             {
-                throw new Exception($"User {username} not found on Kitsu.");
+                throw new Exception($"User '{username}' was not found on Kitsu.");
             }
 
             var userNode = users[0];
@@ -50,7 +54,7 @@ namespace LiveChartTracker.Services
             var avatarUrl = userNode?["attributes"]?["avatar"]?["large"]?.ToString() 
                 ?? userNode?["attributes"]?["avatar"]?["original"]?.ToString();
 
-            var libraryUrl = $"{KitsuBaseUrl}/library-entries?filter[userId]={userId}&filter[kind]=anime&filter[status]=current,planned&include=anime&page[limit]=100";
+            var libraryUrl = $"{KitsuBaseUrl}/library-entries?filter[userId]={userId}&filter[kind]=anime&filter[status]=current,planned&include=anime,anime.mappings&page[limit]=100";
             var libRes = await _httpClient.GetAsync(libraryUrl);
             if (!libRes.IsSuccessStatusCode)
             {
@@ -67,6 +71,8 @@ namespace LiveChartTracker.Services
             }
 
             var animeDict = new Dictionary<string, JsonNode>();
+            var mappingsDict = new Dictionary<string, (int? malId, int? aniId)>();
+
             if (included != null)
             {
                 foreach (var inc in included)
@@ -77,97 +83,159 @@ namespace LiveChartTracker.Services
                     {
                         animeDict[incId] = inc;
                     }
-                }
-            }
-
-            var episodes = new List<CalendarMonthEpisode>();
-            int daysInMonth = DateTime.DaysInMonth(year, month);
-            var monthStart = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
-            var monthEnd = new DateTime(year, month, daysInMonth, 23, 59, 59, DateTimeKind.Utc);
-
-            int totalWatching = entries.Count;
-
-            foreach (var entry in entries)
-            {
-                var entryAttr = entry?["attributes"];
-                if (entryAttr == null) continue;
-
-                var animeRelId = entry?["relationships"]?["anime"]?["data"]?["id"]?.ToString();
-                if (animeRelId == null || !animeDict.TryGetValue(animeRelId, out var animeNode))
-                {
-                    continue;
-                }
-
-                var animeAttr = animeNode["attributes"];
-                if (animeAttr == null) continue;
-
-                string animeStatus = animeAttr["status"]?.ToString()?.ToLowerInvariant() ?? "current";
-                string startStr = animeAttr["startDate"]?.ToString() ?? "";
-                string endStr = animeAttr["endDate"]?.ToString() ?? "";
-
-                DateTime? startDate = DateTime.TryParse(startStr, out var pStart) ? pStart : null;
-                DateTime? endDate = DateTime.TryParse(endStr, out var pEnd) ? pEnd : null;
-
-                // Airing status checks
-                if (animeStatus == "finished" && endDate.HasValue && endDate.Value < monthStart)
-                {
-                    continue; // Finished in the past
-                }
-                if (startDate.HasValue && startDate.Value > monthEnd)
-                {
-                    continue; // Not yet started
-                }
-
-                int progress = entryAttr["progress"]?.GetValue<int?>() ?? 0;
-                double? ratingTwenty = entryAttr["ratingTwenty"]?.GetValue<double?>();
-
-                string title = animeAttr["canonicalTitle"]?.ToString() ?? animeAttr["titles"]?["en"]?.ToString() ?? "";
-                string poster = animeAttr["posterImage"]?["large"]?.ToString() ?? animeAttr["posterImage"]?["medium"]?.ToString() ?? "";
-                int? totalEp = animeAttr["episodeCount"]?.GetValue<int?>();
-                string synopsis = animeAttr["synopsis"]?.ToString() ?? "";
-
-                DateTime start = startDate ?? monthStart;
-                DayOfWeek airDay = start.DayOfWeek;
-
-                for (int day = 1; day <= daysInMonth; day++)
-                {
-                    var currentDate = new DateTime(year, month, day, 18, 0, 0, DateTimeKind.Utc);
-                    if (startDate.HasValue && currentDate < startDate.Value.Date) continue;
-                    if (endDate.HasValue && currentDate > endDate.Value.Date.AddDays(1)) continue;
-
-                    if (currentDate.DayOfWeek == airDay)
+                    else if (incType == "mappings" && inc != null)
                     {
-                        int weeksDiff = (int)Math.Max(1, Math.Ceiling((currentDate - start).TotalDays / 7.0));
-                        int epNumber = Math.Min(totalEp ?? 999, Math.Max(1, progress > 0 ? progress + (weeksDiff > 0 ? weeksDiff % 12 : 1) : weeksDiff));
-
-                        var airTime = new DateTimeOffset(currentDate).ToLocalTime();
-
-                        episodes.Add(new CalendarMonthEpisode
+                        var site = inc["attributes"]?["externalSite"]?.ToString();
+                        var extIdStr = inc["attributes"]?["externalId"]?.ToString();
+                        if (int.TryParse(extIdStr, out var extId))
                         {
-                            Id = $"kitsu_{animeRelId}_d{day}",
-                            KitsuId = animeRelId,
-                            TitleEnglish = title,
-                            TitleRomaji = title,
-                            CoverImage = poster,
-                            Format = (animeAttr["showType"]?.ToString() ?? "TV").ToUpperInvariant(),
-                            TotalEpisodes = totalEp,
-                            EpisodeNumber = epNumber,
-                            AiringAt = airTime,
-                            AiringTimeFormatted = airTime.ToString("HH:mm"),
-                            AiringDateFormatted = airTime.ToString("yyyy-MM-dd"),
-                            TimeUntilAiringSeconds = (long)(airTime - DateTimeOffset.UtcNow).TotalSeconds,
-                            AverageScore = ratingTwenty.HasValue ? ratingTwenty.Value * 5.0 : null,
-                            Synopsis = synopsis,
-                            KitsuUrl = $"https://kitsu.app/anime/{animeAttr["slug"]?.ToString() ?? animeRelId}",
-                            SiteUrl = $"https://kitsu.app/anime/{animeAttr["slug"]?.ToString() ?? animeRelId}",
-                            UserProgress = progress,
-                            UserScore = ratingTwenty.HasValue ? ratingTwenty.Value * 5.0 : null
-                        });
+                            var itemAnimeId = inc["relationships"]?["item"]?["data"]?["id"]?.ToString();
+                            if (itemAnimeId != null)
+                            {
+                                if (!mappingsDict.TryGetValue(itemAnimeId, out var pair))
+                                {
+                                    pair = (null, null);
+                                }
+                                if (site == "myanimelist/anime") pair.malId = extId;
+                                if (site == "anilist/anime") pair.aniId = extId;
+                                mappingsDict[itemAnimeId] = pair;
+                            }
+                        }
                     }
                 }
             }
 
-            return (avatarUrl, episodes.OrderBy(e => e.AiringAt).ToList(), totalWatching);
+            var startOfMonth = new DateTimeOffset(year, month, 1, 0, 0, 0, TimeSpan.Zero);
+            var endOfMonth = new DateTimeOffset(year, month, DateTime.DaysInMonth(year, month), 23, 59, 59, TimeSpan.Zero);
+            var episodes = new List<CalendarMonthEpisode>();
+
+            var malIds = new List<int>();
+            var aniIds = new List<int>();
+
+            foreach (var kvp in mappingsDict)
+            {
+                if (kvp.Value.malId.HasValue) malIds.Add(kvp.Value.malId.Value);
+                if (kvp.Value.aniId.HasValue) aniIds.Add(kvp.Value.aniId.Value);
+            }
+
+            if (malIds.Count > 0 || aniIds.Count > 0)
+            {
+                const string scheduleGql = @"
+query ($malIds: [Int], $aniIds: [Int]) {
+  Page(page: 1, perPage: 50) {
+    media(idMal_in: $malIds, id_in: $aniIds, type: ANIME) {
+      id
+      idMal
+      title { romaji english }
+      coverImage { large }
+      format
+      status
+      episodes
+      averageScore
+      description
+      siteUrl
+      nextAiringEpisode { episode airingAt timeUntilAiring }
+    }
+  }
+}";
+                var gqlRes = await ExecuteGraphQLAsync(scheduleGql, new { malIds = malIds.Distinct().Take(40).ToList(), aniIds = aniIds.Distinct().Take(40).ToList() });
+                var mediaList = gqlRes?["data"]?["Page"]?["media"]?.AsArray();
+                if (mediaList != null)
+                {
+                    foreach (var media in mediaList)
+                    {
+                        if (media == null) continue;
+                        int mId = media["id"]?.GetValue<int>() ?? 0;
+                        int? malId = media["idMal"]?.GetValue<int?>();
+                        var nextEp = media["nextAiringEpisode"];
+
+                        if (nextEp != null)
+                        {
+                            int anchorEp = nextEp["episode"]?.GetValue<int>() ?? 1;
+                            long anchorAirSec = nextEp["airingAt"]?.GetValue<long>() ?? 0;
+                            int? totalEp = media["episodes"]?.GetValue<int?>();
+                            var anchorAirUtc = DateTimeOffset.FromUnixTimeSeconds(anchorAirSec).ToUniversalTime();
+
+                            for (int k = -12; k <= 12; k++)
+                            {
+                                int targetEp = anchorEp + k;
+                                if (targetEp < 1) continue;
+                                if (totalEp.HasValue && targetEp > totalEp.Value) continue;
+
+                                var targetAirUtc = anchorAirUtc.AddDays(k * 7);
+                                if (targetAirUtc < startOfMonth || targetAirUtc > endOfMonth) continue;
+
+                                episodes.Add(new CalendarMonthEpisode
+                                {
+                                    Id = $"kitsu_ani_{mId}_ep{targetEp}",
+                                    AniListId = mId,
+                                    MalId = malId,
+                                    TitleEnglish = media["title"]?["english"]?.ToString() ?? media["title"]?["romaji"]?.ToString() ?? "",
+                                    TitleRomaji = media["title"]?["romaji"]?.ToString() ?? "",
+                                    CoverImage = media["coverImage"]?["large"]?.ToString() ?? "",
+                                    Format = media["format"]?.ToString() ?? "TV",
+                                    TotalEpisodes = totalEp,
+                                    EpisodeNumber = targetEp,
+                                    AiringAt = targetAirUtc,
+                                    AiringTimeFormatted = targetAirUtc.ToString("HH:mm"),
+                                    AiringDateFormatted = targetAirUtc.ToString("yyyy-MM-dd"),
+                                    TimeUntilAiringSeconds = (long)(targetAirUtc - DateTimeOffset.UtcNow).TotalSeconds,
+                                    AverageScore = media["averageScore"]?.GetValue<double?>(),
+                                    Synopsis = media["description"]?.ToString() ?? "",
+                                    AniListUrl = media["siteUrl"]?.ToString(),
+                                    SiteUrl = malId.HasValue ? $"https://myanimelist.net/anime/{malId}" : media["siteUrl"]?.ToString(),
+                                    ListStatus = "Watching"
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            return (avatarUrl, episodes.OrderBy(e => e.AiringAt).ToList(), entries.Count);
+        }
+
+        private async Task<JsonNode?> ExecuteGraphQLAsync(string query, object variables)
+        {
+            var cacheKey = $"{query.GetHashCode()}_{JsonSerializer.Serialize(variables)}";
+            if (_kitsuGqlCache.TryGetValue(cacheKey, out var entry) && DateTimeOffset.UtcNow - entry.cachedAt < TimeSpan.FromMinutes(15))
+            {
+                return entry.data;
+            }
+
+            var payload = new { query = query, variables = variables };
+
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                try
+                {
+                    var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                    var response = await _httpClient.PostAsync(GraphQlEndpoint, content);
+
+                    if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                    {
+                        await Task.Delay(1500 * (attempt + 1));
+                        continue;
+                    }
+
+                    if (!response.IsSuccessStatusCode) return null;
+
+                    var jsonString = await response.Content.ReadAsStringAsync();
+                    var node = JsonNode.Parse(jsonString);
+                    if (node != null)
+                    {
+                        _kitsuGqlCache[cacheKey] = (DateTimeOffset.UtcNow, node);
+                    }
+                    return node;
+                }
+                catch
+                {
+                    if (attempt == 2) return null;
+                    await Task.Delay(1000);
+                }
+            }
+
+            return null;
         }
     }
 }
