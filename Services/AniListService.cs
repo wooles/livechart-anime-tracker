@@ -449,11 +449,12 @@ query ($page: Int, $season: MediaSeason, $seasonYear: Int) {
 
                     var anchorAirUtc = DateTimeOffset.FromUnixTimeSeconds(anchorAirSec).ToUniversalTime();
 
+                    int maxProjectedEp = totalEp ?? (anchorEp > 26 ? anchorEp + 12 : Math.Max(anchorEp + 4, 13));
                     for (int k = -12; k <= 12; k++)
                     {
                         int targetEp = anchorEp + k;
                         if (targetEp < 1) continue;
-                        if (totalEp.HasValue && targetEp > totalEp.Value) continue;
+                        if (targetEp > maxProjectedEp) continue;
 
                         var targetAirUtc = anchorAirUtc.AddDays(k * 7);
                         if (targetAirUtc < startOfMonth || targetAirUtc > endOfMonth) continue;
