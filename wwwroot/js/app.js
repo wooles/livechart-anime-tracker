@@ -417,6 +417,14 @@ function renderSchedule() {
         colEl.appendChild(colBody);
         grid.appendChild(colEl);
     }
+
+    // On mobile / tablet viewports, smoothly center today's column in the viewport
+    setTimeout(() => {
+        const todayCol = grid.querySelector('.day-column.is-today');
+        if (todayCol && window.innerWidth <= 1024) {
+            todayCol.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
+    }, 60);
 }
 
 function createTimeIndicatorElement() {

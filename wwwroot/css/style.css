@@ -700,3 +700,197 @@ html, body {
 .hidden {
     display: none !important;
 }
+
+/* ==================== RESPONSIVE MEDIA QUERIES (MOBILE & TABLET) ==================== */
+
+/* TABLETS & SMALL LAPTOPS (<= 1024px) */
+@media (max-width: 1024px) {
+    .header-container {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        padding: 0.5rem 0.75rem;
+    }
+    
+    .schedule-columns-container {
+        display: flex;
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        -webkit-overflow-scrolling: touch;
+        gap: 8px;
+        padding-bottom: 6px;
+    }
+
+    .day-column {
+        flex: 0 0 280px;
+        min-width: 280px;
+        scroll-snap-align: start;
+    }
+
+    .stats-container {
+        justify-content: space-between;
+        flex-wrap: wrap;
+    }
+}
+
+/* SMARTPHONES & SMALL SCREENS (<= 640px) */
+@media (max-width: 640px) {
+    html, body {
+        overflow-x: hidden;
+    }
+
+    .app-header {
+        position: sticky;
+        top: 0;
+    }
+
+    .header-container {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.4rem;
+        padding: 0.4rem 0.5rem;
+    }
+
+    .header-left {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        gap: 0.5rem;
+    }
+
+    .app-title {
+        font-size: 1rem;
+    }
+
+    .nav-control-group {
+        padding: 1px 3px;
+    }
+
+    .nav-pill-btn {
+        padding: 4px 6px;
+        font-size: 0.8rem;
+    }
+
+    .user-input-form {
+        display: flex;
+        width: 100%;
+        gap: 0.3rem;
+    }
+
+    .form-select {
+        flex: 1 1 40%;
+        min-width: 0;
+        padding: 0.4rem 0.3rem;
+        font-size: 0.75rem;
+    }
+
+    .input-wrapper {
+        flex: 1 1 40%;
+        min-width: 0;
+    }
+
+    .input-wrapper input {
+        width: 100%;
+        padding: 0.4rem 0.5rem;
+        font-size: 0.75rem;
+    }
+
+    #loadBtn {
+        flex: 0 0 auto;
+        padding: 0.4rem 0.75rem;
+        font-size: 0.75rem;
+    }
+
+    .header-actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        gap: 0.3rem;
+    }
+
+    .header-actions .btn,
+    .header-actions .stat-pill {
+        font-size: 0.7rem;
+        padding: 0.2rem 0.4rem;
+    }
+
+    .stat-clock {
+        min-width: 75px;
+        font-size: 0.7rem;
+    }
+
+    /* Main schedule horizontal swipe on phones */
+    .schedule-wrapper {
+        padding: 4px;
+    }
+
+    .schedule-columns-container {
+        display: flex;
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        -webkit-overflow-scrolling: touch;
+        gap: 8px;
+        padding-bottom: 8px;
+    }
+
+    .day-column {
+        flex: 0 0 85vw;
+        min-width: 85vw;
+        max-width: 88vw;
+        scroll-snap-align: center;
+    }
+
+    .day-column-header {
+        padding: 6px 8px;
+    }
+
+    .day-header-title {
+        font-size: 0.8rem;
+    }
+
+    .card-poster {
+        width: 44px;
+        height: 62px;
+    }
+
+    .card-title {
+        font-size: 0.8rem;
+    }
+
+    .card-air-time {
+        font-size: 0.75rem;
+    }
+
+    /* Modal on mobile */
+    .modal-card {
+        width: 95%;
+        max-height: 90vh;
+        margin: 10px;
+    }
+
+    .modal-flex {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 0.75rem;
+    }
+
+    .modal-poster {
+        width: 110px;
+        height: 160px;
+    }
+
+    .modal-highlight-box {
+        align-items: center;
+    }
+
+    .modal-meta-row {
+        justify-content: center;
+    }
+
+    .modal-links {
+        justify-content: center;
+    }
+}
