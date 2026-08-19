@@ -137,9 +137,24 @@ namespace LiveChartTracker.Services
             if (malIds.Count > 0 || aniIds.Count > 0)
             {
                 const string scheduleGql = @"
-query ($malIds: [Int], $aniIds: [Int]) {
-  Page(page: 1, perPage: 50) {
-    media(idMal_in: $malIds, id_in: $aniIds, type: ANIME) {
+query ($aniIds: [Int], $malIds: [Int]) {
+  byAni: Page(page: 1, perPage: 50) {
+    media(id_in: $aniIds, type: ANIME) {
+      id
+      idMal
+      title { romaji english }
+      coverImage { large }
+      format
+      status
+      episodes
+      averageScore
+      description
+      siteUrl
+      nextAiringEpisode { episode airingAt timeUntilAiring }
+    }
+  }
+  byMal: Page(page: 1, perPage: 50) {
+    media(idMal_in: $malIds, type: ANIME) {
       id
       idMal
       title { romaji english }
@@ -154,55 +169,69 @@ query ($malIds: [Int], $aniIds: [Int]) {
     }
   }
 }";
-                var gqlRes = await ExecuteGraphQLAsync(scheduleGql, new { malIds = malIds.Distinct().Take(40).ToList(), aniIds = aniIds.Distinct().Take(40).ToList() });
-                var mediaList = gqlRes?["data"]?["Page"]?["media"]?.AsArray();
-                if (mediaList != null)
+                var gqlRes = await ExecuteGraphQLAsync(scheduleGql, new { aniIds = aniIds.Distinct().Take(50).ToList(), malIds = malIds.Distinct().Take(50).ToList() });
+                var byAni = gqlRes?["data"]?["byAni"]?["media"]?.AsArray();
+                var byMal = gqlRes?["data"]?["byMal"]?["media"]?.AsArray();
+                
+                var allMedia = new Dictionary<int, JsonNode>();
+                if (byAni != null)
                 {
-                    foreach (var media in mediaList)
+                    foreach (var m in byAni)
                     {
-                        if (media == null) continue;
-                        int mId = media["id"]?.GetValue<int>() ?? 0;
-                        int? malId = media["idMal"]?.GetValue<int?>();
-                        var nextEp = media["nextAiringEpisode"];
+                        if (m != null && m["id"] != null) allMedia[m["id"]!.GetValue<int>()] = m;
+                    }
+                }
+                if (byMal != null)
+                {
+                    foreach (var m in byMal)
+                    {
+                        if (m != null && m["id"] != null) allMedia[m["id"]!.GetValue<int>()] = m;
+                    }
+                }
 
-                        if (nextEp != null)
+                foreach (var media in allMedia.Values)
+                {
+                    int mId = media["id"]?.GetValue<int>() ?? 0;
+                    int? malId = media["idMal"]?.GetValue<int?>();
+                    var nextEp = media["nextAiringEpisode"];
+
+                    if (nextEp != null)
+                    {
+                        int anchorEp = nextEp["episode"]?.GetValue<int>() ?? 1;
+                        long anchorAirSec = nextEp["airingAt"]?.GetValue<long>() ?? 0;
+                        int? totalEp = media["episodes"]?.GetValue<int?>();
+                        var anchorAirUtc = DateTimeOffset.FromUnixTimeSeconds(anchorAirSec).ToUniversalTime();
+
+                        for (int k = -12; k <= 12; k++)
                         {
-                            int anchorEp = nextEp["episode"]?.GetValue<int>() ?? 1;
-                            long anchorAirSec = nextEp["airingAt"]?.GetValue<long>() ?? 0;
-                            int? totalEp = media["episodes"]?.GetValue<int?>();
-                            var anchorAirUtc = DateTimeOffset.FromUnixTimeSeconds(anchorAirSec).ToUniversalTime();
+                            int targetEp = anchorEp + k;
+                            if (targetEp < 1) continue;
+                            if (totalEp.HasValue && targetEp > totalEp.Value) continue;
 
-                            for (int k = -12; k <= 12; k++)
+                            var targetAirUtc = anchorAirUtc.AddDays(k * 7);
+                            if (targetAirUtc < startOfMonth || targetAirUtc > endOfMonth) continue;
+
+                            episodes.Add(new CalendarMonthEpisode
                             {
-                                int targetEp = anchorEp + k;
-                                if (targetEp < 1) continue;
-                                if (totalEp.HasValue && targetEp > totalEp.Value) continue;
-
-                                var targetAirUtc = anchorAirUtc.AddDays(k * 7);
-                                if (targetAirUtc < startOfMonth || targetAirUtc > endOfMonth) continue;
-
-                                episodes.Add(new CalendarMonthEpisode
-                                {
-                                    Id = $"kitsu_ani_{mId}_ep{targetEp}",
-                                    AniListId = mId,
-                                    MalId = malId,
-                                    TitleEnglish = media["title"]?["english"]?.ToString() ?? media["title"]?["romaji"]?.ToString() ?? "",
-                                    TitleRomaji = media["title"]?["romaji"]?.ToString() ?? "",
-                                    CoverImage = media["coverImage"]?["large"]?.ToString() ?? "",
-                                    Format = media["format"]?.ToString() ?? "TV",
-                                    TotalEpisodes = totalEp,
-                                    EpisodeNumber = targetEp,
-                                    AiringAt = targetAirUtc,
-                                    AiringTimeFormatted = targetAirUtc.ToString("HH:mm"),
-                                    AiringDateFormatted = targetAirUtc.ToString("yyyy-MM-dd"),
-                                    TimeUntilAiringSeconds = (long)(targetAirUtc - DateTimeOffset.UtcNow).TotalSeconds,
-                                    AverageScore = media["averageScore"]?.GetValue<double?>(),
-                                    Synopsis = media["description"]?.ToString() ?? "",
-                                    AniListUrl = media["siteUrl"]?.ToString(),
-                                    SiteUrl = malId.HasValue ? $"https://myanimelist.net/anime/{malId}" : media["siteUrl"]?.ToString(),
-                                    ListStatus = "Watching"
-                                });
-                            }
+                                Id = $"kitsu_ani_{mId}_ep{targetEp}",
+                                AniListId = mId,
+                                MalId = malId,
+                                TitleEnglish = media["title"]?["english"]?.ToString() ?? media["title"]?["romaji"]?.ToString() ?? "",
+                                TitleRomaji = media["title"]?["romaji"]?.ToString() ?? "",
+                                CoverImage = media["coverImage"]?["large"]?.ToString() ?? "",
+                                Format = media["format"]?.ToString() ?? "TV",
+                                TotalEpisodes = totalEp,
+                                EpisodeNumber = targetEp,
+                                AiringAt = targetAirUtc,
+                                AiringTimeFormatted = targetAirUtc.ToString("HH:mm"),
+                                AiringDateFormatted = targetAirUtc.ToString("yyyy-MM-dd"),
+                                TimeUntilAiringSeconds = (long)(targetAirUtc - DateTimeOffset.UtcNow).TotalSeconds,
+                                AverageScore = media["averageScore"]?.GetValue<double?>(),
+                                Synopsis = media["description"]?.ToString() ?? "",
+                                AniListUrl = media["siteUrl"]?.ToString(),
+                                SiteUrl = malId.HasValue ? $"https://myanimelist.net/anime/{malId}" : media["siteUrl"]?.ToString(),
+                                ListStatus = "Watching"
+                            });
                         }
                     }
                 }
