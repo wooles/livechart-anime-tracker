@@ -80,6 +80,14 @@ query ($userName: String) {
           }
           description
           siteUrl
+          externalLinks {
+            id
+            site
+            url
+            type
+            icon
+            color
+          }
           nextAiringEpisode {
             episode
             airingAt
@@ -202,6 +210,7 @@ query ($userName: String) {
                             SiteUrl = media["siteUrl"]?.ToString(),
                             AniListUrl = media["siteUrl"]?.ToString(),
                             MalUrl = media["idMal"] != null ? $"https://myanimelist.net/anime/{media["idMal"]}" : null,
+                            StreamingLinks = StreamingHelper.ParseStreamingLinks(media["externalLinks"]),
                             UserProgress = progress,
                             UserScore = score,
                             ListStatus = listStatus
@@ -247,6 +256,14 @@ query ($page: Int, $perPage: Int, $mediaId_in: [Int], $airingAt_greater: Int, $a
         }
         description
         siteUrl
+        externalLinks {
+          id
+          site
+          url
+          type
+          icon
+          color
+        }
       }
     }
   }
@@ -317,6 +334,7 @@ query ($page: Int, $perPage: Int, $mediaId_in: [Int], $airingAt_greater: Int, $a
                                 Synopsis = media["description"]?.ToString() ?? "",
                                 SiteUrl = media["siteUrl"]?.ToString(),
                                 AniListUrl = media["siteUrl"]?.ToString(),
+                                StreamingLinks = StreamingHelper.ParseStreamingLinks(media["externalLinks"]),
                                 UserProgress = userEntry.progress,
                                 UserScore = userEntry.score,
                                 ListStatus = userEntry.listStatus ?? "Watching"
@@ -399,6 +417,14 @@ query ($page: Int, $season: MediaSeason, $seasonYear: Int) {
       }
       description
       siteUrl
+      externalLinks {
+        id
+        site
+        url
+        type
+        icon
+        color
+      }
       nextAiringEpisode {
         episode
         airingAt
@@ -483,6 +509,7 @@ query ($page: Int, $season: MediaSeason, $seasonYear: Int) {
                             SiteUrl = media["siteUrl"]?.ToString(),
                             AniListUrl = media["siteUrl"]?.ToString(),
                             MalUrl = media["idMal"] != null ? $"https://myanimelist.net/anime/{media["idMal"]}" : null,
+                            StreamingLinks = StreamingHelper.ParseStreamingLinks(media["externalLinks"]),
                             ListStatus = "Airing"
                         });
                     }

@@ -612,7 +612,79 @@ function openDetailModal(ep) {
 
     document.getElementById('modalSynopsis').innerHTML = ep.synopsis ? stripHtml(ep.synopsis) : 'No description available for this series.';
 
-    // Links
+    // STREAMING SERVICES (Crunchyroll, Disney+, Netflix, HBO Max, Prime Video, ADN, etc.)
+    const streamContainer = document.getElementById('modalStreamingLinks');
+    if (streamContainer) {
+        streamContainer.innerHTML = '';
+        const searchTitle = ep.titleEnglish || ep.displayTitle || ep.titleRomaji;
+        const q = encodeURIComponent(searchTitle);
+
+        const popularPlatforms = [
+            { id: 'crunchyroll', name: 'Crunchyroll', icon: '🟠', urlMatch: 'crunchyroll.com', searchUrl: `https://www.crunchyroll.com/search?q=${q}` },
+            { id: 'disneyplus', name: 'Disney+', icon: '🏰', urlMatch: 'disneyplus.com', searchUrl: `https://www.disneyplus.com/search?q=${q}` },
+            { id: 'netflix', name: 'Netflix', icon: '🔴', urlMatch: 'netflix.com', searchUrl: `https://www.netflix.com/search?q=${q}` },
+            { id: 'max', name: 'Max', icon: '🟣', urlMatch: 'max.com', searchUrl: `https://www.max.com/search?q=${q}` },
+            { id: 'primevideo', name: 'Prime Video', icon: '📦', urlMatch: 'primevideo.com', searchUrl: `https://www.amazon.com/s?k=${q}&i=instant-video` },
+            { id: 'adn', name: 'ADN', icon: '🇫🇷', urlMatch: 'animationdigitalnetwork.fr', searchUrl: `https://animationdigitalnetwork.fr/video?search=${q}` },
+            { id: 'hidive', name: 'HIDIVE', icon: '💎', urlMatch: 'hidive.com', searchUrl: `https://www.hidive.com/search?q=${q}` },
+            { id: 'bilibili', name: 'Bilibili', icon: '📺', urlMatch: 'bilibili', searchUrl: `https://www.bilibili.tv/en/search-result?q=${q}` },
+            { id: 'youtube', name: 'YouTube', icon: '▶️', urlMatch: 'youtube.com', searchUrl: `https://www.youtube.com/results?search_query=${q}+anime` }
+        ];
+
+        const renderedPlatforms = new Set();
+
+        // 1. Direct verified streaming links from AniList / API
+        if (Array.isArray(ep.streamingLinks) && ep.streamingLinks.length > 0) {
+            ep.streamingLinks.forEach(link => {
+                const siteName = link.site || 'Stream';
+                const directUrl = link.url;
+                if (!directUrl) return;
+
+                // Find matching platform definition
+                const matchedDef = popularPlatforms.find(p => 
+                    siteName.toLowerCase().includes(p.id) || 
+                    siteName.toLowerCase().includes(p.name.toLowerCase()) || 
+                    directUrl.toLowerCase().includes(p.urlMatch)
+                );
+
+                const btn = document.createElement('a');
+                btn.href = directUrl;
+                btn.target = '_blank';
+                btn.rel = 'noopener noreferrer';
+
+                if (matchedDef) {
+                    btn.className = `streaming-btn ${matchedDef.id}`;
+                    btn.innerHTML = `<span>${matchedDef.icon}</span> <span>${matchedDef.name}</span>`;
+                    renderedPlatforms.add(matchedDef.id);
+                } else {
+                    btn.className = 'streaming-btn';
+                    btn.innerHTML = `<span>📺</span> <span>${siteName}</span>`;
+                }
+
+                streamContainer.appendChild(btn);
+            });
+        }
+
+        // 2. For requested popular streaming services not directly linked, add quick search button
+        const priorityServices = ['crunchyroll', 'disneyplus', 'netflix', 'max', 'primevideo', 'adn'];
+        priorityServices.forEach(pId => {
+            if (!renderedPlatforms.has(pId)) {
+                const p = popularPlatforms.find(x => x.id === pId);
+                if (p) {
+                    const btn = document.createElement('a');
+                    btn.href = p.searchUrl;
+                    btn.target = '_blank';
+                    btn.rel = 'noopener noreferrer';
+                    btn.className = `streaming-btn search-fallback`;
+                    btn.title = `Search for "${searchTitle}" on ${p.name}`;
+                    btn.innerHTML = `<span>${p.icon}</span> <span>${p.name} 🔍</span>`;
+                    streamContainer.appendChild(btn);
+                }
+            }
+        });
+    }
+
+    // Database Links
     const links = document.getElementById('modalLinks');
     links.innerHTML = '';
 

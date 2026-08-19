@@ -43,10 +43,86 @@ namespace LiveChartTracker.Models
         public string? AniListUrl { get; set; }
         public string? KitsuUrl { get; set; }
 
+        public List<StreamingLink> StreamingLinks { get; set; } = new();
+
         // User watch tracking
         public string ListStatus { get; set; } = "Watching"; // "Watching" or "PlanToWatch"
         public int? UserProgress { get; set; } // e.g. watched 5
         public double? UserScore { get; set; }
+    }
+
+    public class StreamingLink
+    {
+        public string Site { get; set; } = string.Empty;
+        public string Url { get; set; } = string.Empty;
+        public string? Icon { get; set; }
+        public string? Color { get; set; }
+    }
+
+    public static class StreamingHelper
+    {
+        public static List<StreamingLink> ParseStreamingLinks(System.Text.Json.Nodes.JsonNode? externalLinksNode)
+        {
+            var links = new List<StreamingLink>();
+            var addedSites = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            if (externalLinksNode is System.Text.Json.Nodes.JsonArray arr)
+            {
+                foreach (var linkNode in arr)
+                {
+                    var site = linkNode?["site"]?.GetValue<string>()?.Trim();
+                    var url = linkNode?["url"]?.GetValue<string>()?.Trim();
+                    var type = linkNode?["type"]?.GetValue<string>()?.Trim();
+
+                    if (string.IsNullOrWhiteSpace(site) || string.IsNullOrWhiteSpace(url))
+                        continue;
+
+                    if (string.Equals(type, "STREAMING", StringComparison.OrdinalIgnoreCase) || IsKnownStreaming(site))
+                    {
+                        var norm = NormalizeSite(site);
+                        if (!addedSites.Contains(norm))
+                        {
+                            addedSites.Add(norm);
+                            links.Add(new StreamingLink
+                            {
+                                Site = norm,
+                                Url = url,
+                                Icon = linkNode?["icon"]?.GetValue<string>(),
+                                Color = linkNode?["color"]?.GetValue<string>()
+                            });
+                        }
+                    }
+                }
+            }
+            return links;
+        }
+
+        private static bool IsKnownStreaming(string site)
+        {
+            var s = site.ToLowerInvariant();
+            return s.Contains("crunchyroll") || s.Contains("netflix") || s.Contains("disney") || 
+                   s.Contains("prime") || s.Contains("amazon") || s.Contains("max") || s.Contains("hbo") || 
+                   s.Contains("adn") || s.Contains("animation digital network") || s.Contains("hidive") || 
+                   s.Contains("hulu") || s.Contains("bilibili") || s.Contains("youtube") || s.Contains("iqiyi");
+        }
+
+        private static string NormalizeSite(string site)
+        {
+            var s = site.Trim();
+            if (s.Equals("Amazon Prime Video", StringComparison.OrdinalIgnoreCase) || s.Equals("Amazon", StringComparison.OrdinalIgnoreCase))
+                return "Prime Video";
+            if (s.Equals("Disney Plus", StringComparison.OrdinalIgnoreCase))
+                return "Disney+";
+            if (s.Equals("HBO Max", StringComparison.OrdinalIgnoreCase))
+                return "Max";
+            if (s.Equals("Animation Digital Network", StringComparison.OrdinalIgnoreCase))
+                return "ADN";
+            if (s.Equals("Bilibili TV", StringComparison.OrdinalIgnoreCase))
+                return "Bilibili";
+            if (s.Equals("iQ", StringComparison.OrdinalIgnoreCase))
+                return "iQiyi";
+            return s;
+        }
     }
 
     public class CalendarDay

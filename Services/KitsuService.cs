@@ -150,6 +150,7 @@ query ($aniIds: [Int], $malIds: [Int]) {
       averageScore
       description
       siteUrl
+      externalLinks { id site url type icon color }
       nextAiringEpisode { episode airingAt timeUntilAiring }
     }
   }
@@ -165,6 +166,7 @@ query ($aniIds: [Int], $malIds: [Int]) {
       averageScore
       description
       siteUrl
+      externalLinks { id site url type icon color }
       nextAiringEpisode { episode airingAt timeUntilAiring }
     }
   }
@@ -230,7 +232,9 @@ query ($aniIds: [Int], $malIds: [Int]) {
                                 AverageScore = media["averageScore"]?.GetValue<double?>(),
                                 Synopsis = media["description"]?.ToString() ?? "",
                                 AniListUrl = media["siteUrl"]?.ToString(),
+                                MalUrl = malId.HasValue ? $"https://myanimelist.net/anime/{malId}" : null,
                                 SiteUrl = malId.HasValue ? $"https://myanimelist.net/anime/{malId}" : media["siteUrl"]?.ToString(),
+                                StreamingLinks = StreamingHelper.ParseStreamingLinks(media["externalLinks"]),
                                 ListStatus = "Watching"
                             });
                         }

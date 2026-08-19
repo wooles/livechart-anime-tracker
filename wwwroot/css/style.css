@@ -643,6 +643,125 @@ html, body {
     overflow-y: auto;
 }
 
+/* ==================== STREAMING SERVICES SECTION ==================== */
+.modal-streaming-section {
+    margin-top: 0.6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding-top: 0.5rem;
+    border-top: 1px dashed var(--border-color);
+}
+
+.streaming-section-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.streaming-links-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.streaming-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.65rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-decoration: none;
+    transition: all 0.15s ease;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: #ffffff;
+    cursor: pointer;
+}
+
+.streaming-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    filter: brightness(1.15);
+}
+
+.streaming-btn.crunchyroll {
+    background: #f47521;
+    border-color: #f47521;
+    color: #ffffff;
+}
+
+.streaming-btn.netflix {
+    background: #E50914;
+    border-color: #E50914;
+    color: #ffffff;
+}
+
+.streaming-btn.disneyplus {
+    background: #0063e5;
+    border-color: #0063e5;
+    color: #ffffff;
+}
+
+.streaming-btn.primevideo {
+    background: #00A8E1;
+    border-color: #00A8E1;
+    color: #0f172a;
+    font-weight: 800;
+}
+
+.streaming-btn.max {
+    background: #002be7;
+    border-color: #002be7;
+    color: #ffffff;
+}
+
+.streaming-btn.adn {
+    background: #1b3280;
+    border-color: #00a2e8;
+    color: #ffffff;
+}
+
+.streaming-btn.hidive {
+    background: #00aeef;
+    border-color: #00aeef;
+    color: #ffffff;
+}
+
+.streaming-btn.hulu {
+    background: #1ce783;
+    border-color: #1ce783;
+    color: #052e16;
+}
+
+.streaming-btn.bilibili {
+    background: #00a1d6;
+    border-color: #00a1d6;
+    color: #ffffff;
+}
+
+.streaming-btn.youtube {
+    background: #cc0000;
+    border-color: #cc0000;
+    color: #ffffff;
+}
+
+.streaming-btn.search-fallback {
+    background: var(--bg-card);
+    border: 1px dashed var(--border-color);
+    color: var(--text-dim);
+    font-weight: 600;
+}
+
+.streaming-btn.search-fallback:hover {
+    color: var(--text-main);
+    border-color: var(--accent-blue);
+}
+
 .modal-links {
     display: flex;
     flex-wrap: wrap;

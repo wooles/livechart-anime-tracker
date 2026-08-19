@@ -142,6 +142,14 @@ query ($page: Int, $malIds: [Int]) {
       averageScore
       description
       siteUrl
+      externalLinks {
+        id
+        site
+        url
+        type
+        icon
+        color
+      }
       nextAiringEpisode {
         episode
         airingAt
@@ -235,6 +243,7 @@ query ($page: Int, $malIds: [Int]) {
                                 MalUrl = $"https://myanimelist.net/anime/{malId}",
                                 AniListUrl = media["siteUrl"]?.ToString(),
                                 SiteUrl = $"https://myanimelist.net/anime/{malId}",
+                                StreamingLinks = StreamingHelper.ParseStreamingLinks(media["externalLinks"]),
                                 UserProgress = userEntry.watched,
                                 UserScore = userEntry.score > 0 ? userEntry.score : null,
                                 ListStatus = userEntry.listStatus ?? "Watching"
