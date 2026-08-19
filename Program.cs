@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -112,12 +112,13 @@ app.MapGet("/api/status", () =>
     });
 });
 
+var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
 Console.WriteLine("====================================================================");
-Console.WriteLine("  📅 Anime Monthly Calendar (.NET 8 + Tenrai.Net) is running!");
-Console.WriteLine("  🌐 Otwórz w przeglądarce: http://localhost:5000");
+Console.WriteLine($"  📅 Anime Monthly Calendar (.NET 8 + Tenrai.Net) is running on port {port}!");
+Console.WriteLine($"  🌐 URL: http://localhost:{port}");
 Console.WriteLine("====================================================================");
 
-app.Run("http://0.0.0.0:5000");
+app.Run($"http://0.0.0.0:{port}");
 
 // Helper method for CLI Mode
 static async Task RunCliModeAsync(IServiceProvider services, string[] args)

@@ -1,6 +1,6 @@
 ﻿services:
   - type: web
-    name: anime-calendar-api
+    name: livechart-anime-tracker
     env: docker
     plan: free
     region: frankfurt
