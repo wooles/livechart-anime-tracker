@@ -10,7 +10,6 @@
 A high-performance **.NET 8** web application providing an ultra-compact, full-screen **Weekly & Monthly Anime Watching Calendar**. Automatically aggregates upcoming episode releases **exclusively for series currently in the user's watching list**, mapped to exact Japanese TV broadcast minutes from LiveChart.
 
 👉 **Anime Watching Calendar:** **[https://sort.moe/calendar](https://sort.moe/calendar)**  
-👉 **Live Cloud API:** **[https://livechart-anime-tracker.onrender.com/](https://livechart-anime-tracker.onrender.com/)**  
 👉 **Anime Ranking Sorter:** **[https://sort.moe/](https://sort.moe/)**
 
 ---
@@ -36,8 +35,7 @@ A high-performance **.NET 8** web application providing an ultra-compact, full-s
   - Click any episode chip to view the episode title, air date & local time, format, score, progress, synopsis, and direct external links to LiveChart, MAL, AniList, and Kitsu.
 - 📥 **RFC 5545 iCalendar (.ics) Export**:
   - Download standard `.ics` calendar files with reminder alarms for Google Calendar, Apple Calendar, and Outlook.
-- 🏆 **Ecosystem Integration**:
-  - Integrated navigation button to **[Anime Sorter (sort.moe)](https://sort.moe/)**.
+
 
 ---
 
@@ -46,7 +44,7 @@ A high-performance **.NET 8** web application providing an ultra-compact, full-s
 - **Backend**: .NET 8 ASP.NET Core Minimal API (C#), `Tenrai.Net 3.1.0`, `Ical.Net 4.3.1`.
 - **Frontend**: Vanilla JavaScript (ES6+), Modern CSS3 Grid & Variables, Dark/Light theme toggle.
 - **Containerization**: Multi-stage `Dockerfile` (Debian-based ASP.NET Core runtime with full ICU/timezone support) and `render.yaml`.
-- **Deployment**: Hosted on Render.com with dynamic port binding and zero-config deployment.
+
 
 ---
 
