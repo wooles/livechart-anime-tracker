@@ -1,4 +1,4 @@
-﻿// Anime Schedule - Weekly Airing Timeline (.NET 8 + Tenrai.Net)
+// Anime Schedule - Weekly Airing Timeline (.NET 8 + Tenrai.Net)
 
 const BACKEND_API_URL = 'https://livechart-anime-tracker.onrender.com';
 
@@ -157,16 +157,23 @@ async function fetchCalendar(showOverlay = true) {
         const data = await response.json();
         state.calendarData = data;
 
-        // Flatten all episodes from days
-        const eps = [];
+        // Merge all episodes by unique identity (MAL ID / AniList ID + Episode Number)
+        if (!state.allEpisodes) state.allEpisodes = [];
         (data.days || []).forEach(d => {
             (d.episodes || []).forEach(ep => {
-                if (!eps.some(e => e.id === ep.id)) {
-                    eps.push(ep);
+                const existingIdx = state.allEpisodes.findIndex(e => 
+                    (e.id && ep.id && e.id === ep.id) ||
+                    (e.malId && ep.malId && e.malId === ep.malId && e.episodeNumber === ep.episodeNumber) ||
+                    (e.aniListId && ep.aniListId && e.aniListId === ep.aniListId && e.episodeNumber === ep.episodeNumber)
+                );
+
+                if (existingIdx >= 0) {
+                    state.allEpisodes[existingIdx] = ep;
+                } else {
+                    state.allEpisodes.push(ep);
                 }
             });
         });
-        state.allEpisodes = eps;
 
         renderSchedule();
     } catch (err) {

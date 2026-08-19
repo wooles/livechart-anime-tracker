@@ -76,6 +76,11 @@ query ($userName: String) {
           }
           description
           siteUrl
+          nextAiringEpisode {
+            episode
+            airingAt
+            timeUntilAiring
+          }
         }
       }
     }
@@ -128,6 +133,63 @@ query ($userName: String) {
             long startSec = startOfMonth.ToUnixTimeSeconds();
             long endSec = endOfMonth.ToUnixTimeSeconds();
 
+            var episodesList = new List<CalendarMonthEpisode>();
+
+            // 1. Anchor projection for all airing series from nextAiringEpisode
+            foreach (var kvp in watchingEntries)
+            {
+                int mediaId = kvp.Key;
+                var (media, progress, score, listStatus) = kvp.Value;
+                var nextEpNode = media["nextAiringEpisode"];
+                if (nextEpNode != null)
+                {
+                    int anchorEp = nextEpNode["episode"]?.GetValue<int>() ?? 1;
+                    long anchorAirSec = nextEpNode["airingAt"]?.GetValue<long>() ?? 0;
+                    int? totalEp = media["episodes"]?.GetValue<int?>();
+
+                    var anchorAirUtc = DateTimeOffset.FromUnixTimeSeconds(anchorAirSec).ToUniversalTime();
+
+                    for (int k = -12; k <= 12; k++)
+                    {
+                        int targetEp = anchorEp + k;
+                        if (targetEp < 1) continue;
+                        if (totalEp.HasValue && targetEp > totalEp.Value) continue;
+
+                        var targetAirUtc = anchorAirUtc.AddDays(k * 7);
+                        if (targetAirUtc < startOfMonth || targetAirUtc > endOfMonth) continue;
+
+                        episodesList.Add(new CalendarMonthEpisode
+                        {
+                            Id = $"anilist_{mediaId}_ep{targetEp}",
+                            AniListId = mediaId,
+                            MalId = media["idMal"]?.GetValue<int?>(),
+                            TitleRomaji = media["title"]?["romaji"]?.ToString() ?? "",
+                            TitleEnglish = media["title"]?["english"]?.ToString() ?? "",
+                            TitleNative = media["title"]?["native"]?.ToString() ?? "",
+                            CoverImage = media["coverImage"]?["extraLarge"]?.ToString() ?? media["coverImage"]?["large"]?.ToString() ?? "",
+                            BannerImage = media["bannerImage"]?.ToString(),
+                            Format = media["format"]?.ToString() ?? "TV",
+                            Status = media["status"]?.ToString() ?? "RELEASING",
+                            TotalEpisodes = totalEp,
+                            EpisodeDuration = media["duration"]?.GetValue<int?>(),
+                            EpisodeNumber = targetEp,
+                            AiringAt = targetAirUtc,
+                            AiringTimeFormatted = targetAirUtc.ToString("HH:mm"),
+                            AiringDateFormatted = targetAirUtc.ToString("yyyy-MM-dd"),
+                            TimeUntilAiringSeconds = (long)(targetAirUtc - DateTimeOffset.UtcNow).TotalSeconds,
+                            AverageScore = media["averageScore"]?.GetValue<double?>(),
+                            Synopsis = media["description"]?.ToString() ?? "",
+                            SiteUrl = media["siteUrl"]?.ToString(),
+                            AniListUrl = media["siteUrl"]?.ToString(),
+                            MalUrl = media["idMal"] != null ? $"https://myanimelist.net/anime/{media["idMal"]}" : null,
+                            UserProgress = progress,
+                            UserScore = score,
+                            ListStatus = listStatus
+                        });
+                    }
+                }
+            }
+
             const string scheduleQuery = @"
 query ($page: Int, $perPage: Int, $mediaId_in: [Int], $airingAt_greater: Int, $airingAt_lesser: Int) {
   Page(page: $page, perPage: $perPage) {
@@ -170,10 +232,8 @@ query ($page: Int, $perPage: Int, $mediaId_in: [Int], $airingAt_greater: Int, $a
   }
 }";
 
-            var episodesList = new List<CalendarMonthEpisode>();
             int page = 1;
             bool hasNextPage = true;
-
             var idChunks = mediaIds.Chunk(50).ToList();
 
             foreach (var chunk in idChunks)
@@ -211,10 +271,10 @@ query ($page: Int, $perPage: Int, $mediaId_in: [Int], $airingAt_greater: Int, $a
                             long timeUntil = sch?["timeUntilAiring"]?.GetValue<long>() ?? 0;
                             int epNum = sch?["episode"]?.GetValue<int>() ?? 1;
 
-                            // Store in UTC so client browser converts to exact local timezone
                             var airUtc = DateTimeOffset.FromUnixTimeSeconds(airSec).ToUniversalTime();
 
-                            var ep = new CalendarMonthEpisode
+                            var existingIdx = episodesList.FindIndex(e => e.AniListId == mediaId && e.EpisodeNumber == epNum);
+                            var exactEp = new CalendarMonthEpisode
                             {
                                 Id = "anilist_" + mediaId + "_ep" + epNum,
                                 AniListId = mediaId,
@@ -242,24 +302,31 @@ query ($page: Int, $perPage: Int, $mediaId_in: [Int], $airingAt_greater: Int, $a
                                 ListStatus = userEntry.listStatus ?? "Watching"
                             };
 
-                            if (ep.MalId.HasValue)
+                            if (existingIdx >= 0)
                             {
-                                ep.MalUrl = $"https://myanimelist.net/anime/{ep.MalId.Value}";
+                                episodesList[existingIdx] = exactEp;
+                            }
+                            else
+                            {
+                                episodesList.Add(exactEp);
+                            }
+
+                            if (exactEp.MalId.HasValue)
+                            {
+                                exactEp.MalUrl = $"https://myanimelist.net/anime/{exactEp.MalId.Value}";
                             }
 
                             var genres = media["genres"]?.AsArray();
                             if (genres != null)
                             {
-                                ep.Genres = genres.Select(g => g?.ToString() ?? "").Where(g => !string.IsNullOrEmpty(g)).ToList();
+                                exactEp.Genres = genres.Select(g => g?.ToString() ?? "").Where(g => !string.IsNullOrEmpty(g)).ToList();
                             }
 
                             var studios = media["studios"]?["nodes"]?.AsArray();
                             if (studios != null)
                             {
-                                ep.Studios = studios.Select(s => s?["name"]?.ToString() ?? "").Where(s => !string.IsNullOrEmpty(s)).ToList();
+                                exactEp.Studios = studios.Select(s => s?["name"]?.ToString() ?? "").Where(s => !string.IsNullOrEmpty(s)).ToList();
                             }
-
-                            episodesList.Add(ep);
                         }
                     }
 

@@ -114,7 +114,7 @@ namespace LiveChartTracker.Services
 
             try
             {
-                // Map MAL IDs to AniList IDs
+                // Map MAL IDs to AniList IDs with nextAiringEpisode anchor
                 const string malToAniQuery = @"
 query ($malIds: [Int]) {
   Page(page: 1, perPage: 50) {
@@ -129,10 +129,16 @@ query ($malIds: [Int]) {
         large
       }
       format
+      status
       episodes
       averageScore
       description
       siteUrl
+      nextAiringEpisode {
+        episode
+        airingAt
+        timeUntilAiring
+      }
     }
   }
 }";
@@ -159,7 +165,63 @@ query ($malIds: [Int]) {
                     }
                 }
 
-                // Query exact airing schedules with minute-level precision
+                // Project consistent weekly broadcast schedules from nextAiringEpisode anchors
+                foreach (var kvp in aniMediaMap)
+                {
+                    int malId = kvp.Key;
+                    var media = kvp.Value;
+                    var nextEpNode = media["nextAiringEpisode"];
+                    var userEntry = watchingList.FirstOrDefault(w => w.malId == malId);
+
+                    if (nextEpNode != null)
+                    {
+                        int anchorEp = nextEpNode["episode"]?.GetValue<int>() ?? 1;
+                        long anchorAirSec = nextEpNode["airingAt"]?.GetValue<long>() ?? 0;
+                        int? totalEp = userEntry.totalEp > 0 ? userEntry.totalEp : media["episodes"]?.GetValue<int?>();
+
+                        var anchorAirUtc = DateTimeOffset.FromUnixTimeSeconds(anchorAirSec).ToUniversalTime();
+
+                        // Project weeks backward and forward across the month window (-12 to +12 weeks)
+                        for (int k = -12; k <= 12; k++)
+                        {
+                            int targetEp = anchorEp + k;
+                            if (targetEp < 1) continue;
+                            if (totalEp.HasValue && targetEp > totalEp.Value) continue;
+
+                            var targetAirUtc = anchorAirUtc.AddDays(k * 7);
+                            if (targetAirUtc < startOfMonth || targetAirUtc > endOfMonth) continue;
+
+                            episodes.Add(new CalendarMonthEpisode
+                            {
+                                Id = $"mal_{malId}_ep{targetEp}",
+                                MalId = malId,
+                                AniListId = media["id"]?.GetValue<int?>(),
+                                TitleEnglish = userEntry.title ?? media["title"]?["english"]?.ToString() ?? media["title"]?["romaji"]?.ToString() ?? "",
+                                TitleRomaji = media["title"]?["romaji"]?.ToString() ?? userEntry.title ?? "",
+                                CoverImage = userEntry.img ?? media["coverImage"]?["large"]?.ToString() ?? "",
+                                Format = media["format"]?.ToString() ?? userEntry.mediaType ?? "TV",
+                                TotalEpisodes = totalEp,
+                                EpisodeNumber = targetEp,
+                                AiringAt = targetAirUtc,
+                                AiringTimeFormatted = targetAirUtc.ToString("HH:mm"),
+                                AiringDateFormatted = targetAirUtc.ToString("yyyy-MM-dd"),
+                                TimeUntilAiringSeconds = (long)(targetAirUtc - DateTimeOffset.UtcNow).TotalSeconds,
+                                AverageScore = media["averageScore"]?.GetValue<double?>() ?? (userEntry.score > 0 ? userEntry.score : null),
+                                Synopsis = media["description"]?.ToString() ?? "",
+                                MalUrl = $"https://myanimelist.net/anime/{malId}",
+                                AniListUrl = media["siteUrl"]?.ToString(),
+                                SiteUrl = $"https://myanimelist.net/anime/{malId}",
+                                UserProgress = userEntry.watched,
+                                UserScore = userEntry.score > 0 ? userEntry.score : null,
+                                ListStatus = userEntry.listStatus ?? "Watching"
+                            });
+                        }
+
+                        processedMalIds.Add(malId);
+                    }
+                }
+
+                // Query exact airing schedules for any additional explicit schedule dates
                 if (aniIds.Count > 0)
                 {
                     const string schedQuery = @"
@@ -229,7 +291,9 @@ query ($page: Int, $perPage: Int, $mediaIds: [Int], $startSec: Int, $endSec: Int
 
                                     var userEntry = watchingList.FirstOrDefault(w => w.malId == mMalId);
 
-                                    episodes.Add(new CalendarMonthEpisode
+                                    // Remove any projected episode if exact official schedule is present
+                                    var existingIdx = episodes.FindIndex(e => e.MalId == mMalId && e.EpisodeNumber == epNum);
+                                    var exactEp = new CalendarMonthEpisode
                                     {
                                         Id = $"mal_{mMalId ?? media["id"]?.GetValue<int>()}_ep{epNum}",
                                         MalId = mMalId,
@@ -252,7 +316,16 @@ query ($page: Int, $perPage: Int, $mediaIds: [Int], $startSec: Int, $endSec: Int
                                         UserProgress = userEntry.watched,
                                         UserScore = userEntry.score > 0 ? userEntry.score : null,
                                         ListStatus = userEntry.listStatus ?? "Watching"
-                                    });
+                                    };
+
+                                    if (existingIdx >= 0)
+                                    {
+                                        episodes[existingIdx] = exactEp;
+                                    }
+                                    else
+                                    {
+                                        episodes.Add(exactEp);
+                                    }
 
                                     if (mMalId.HasValue) processedMalIds.Add(mMalId.Value);
                                 }
