@@ -1,0 +1,15 @@
+﻿name: Render 24/7 Keep Alive Pinger
+
+on:
+  schedule:
+    # Runs every 10 minutes 24/7
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render Backend
+        run: |
+          curl -s -f -m 30 "https://livechart-anime-tracker.onrender.com/api/status" || echo "Pinging wake-up"

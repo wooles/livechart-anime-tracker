@@ -5,9 +5,10 @@ const BACKEND_API_URL = 'https://livechart-anime-tracker.onrender.com';
 const state = {
     platform: 'AniList',
     username: '',
-    startDate: getTodayMidnight(), // Start date of 7-day rolling window
+    startDate: getTodayMidnight(),
     calendarData: null,
-    allEpisodes: [] // Flattened array of all episodes loaded
+    allEpisodes: [],
+    loadedMonths: new Set() // Tracks "YYYY-MM"
 };
 
 function getTodayMidnight() {
@@ -23,7 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
     startLiveTickers();
 
     if (state.username) {
-        fetchCalendar();
+        handleLoadCalendar();
     }
 });
 
@@ -104,16 +105,26 @@ function shiftDays(n) {
     checkAndFetchMonthIfNeeded();
 }
 
-function checkAndFetchMonthIfNeeded() {
-    const y = state.startDate.getFullYear();
-    const m = state.startDate.getMonth() + 1;
-    // If not fetched or different month, refresh in background
-    if (!state.calendarData || state.calendarData.year !== y || state.calendarData.month !== m) {
-        fetchCalendar(false);
+async function checkAndFetchMonthIfNeeded() {
+    const startY = state.startDate.getFullYear();
+    const startM = state.startDate.getMonth() + 1;
+    const keyStart = `${startY}-${startM}`;
+
+    const endDate = new Date(state.startDate);
+    endDate.setDate(endDate.getDate() + 6);
+    const endY = endDate.getFullYear();
+    const endM = endDate.getMonth() + 1;
+    const keyEnd = `${endY}-${endM}`;
+
+    if (!state.loadedMonths.has(keyStart)) {
+        await fetchMonthData(startY, startM, false);
+    }
+    if (!state.loadedMonths.has(keyEnd)) {
+        await fetchMonthData(endY, endM, false);
     }
 }
 
-function handleLoadCalendar() {
+async function handleLoadCalendar() {
     const user = document.getElementById('usernameInput').value.trim();
     const plat = document.getElementById('platformSelect').value;
 
@@ -121,70 +132,78 @@ function handleLoadCalendar() {
 
     state.username = user;
     state.platform = plat;
+    state.allEpisodes = [];
+    state.loadedMonths = new Set();
 
     localStorage.setItem('anime_cal_user', user);
     localStorage.setItem('anime_cal_plat', plat);
 
-    fetchCalendar(true);
-}
-
-async function fetchCalendar(showOverlay = true) {
-    if (!state.username) return;
-    if (showOverlay) {
-        showLoading(`Loading anime schedule for ${state.username} (${state.platform})...`);
-    }
+    showLoading(`Loading anime schedule for ${state.username} (${state.platform})...`);
 
     try {
-        const year = state.startDate.getFullYear();
-        const month = state.startDate.getMonth() + 1;
-
-        const isSameOrigin = window.location.origin.includes('onrender.com') || window.location.origin.includes('localhost:5000');
-        const apiBase = isSameOrigin ? '' : BACKEND_API_URL;
-        const primaryUrl = `${apiBase}/api/calendar/month?platform=${encodeURIComponent(state.platform)}&username=${encodeURIComponent(state.username)}&year=${year}&month=${month}`;
-
-        let response;
-        try {
-            response = await fetch(primaryUrl);
-        } catch (fetchErr) {
-            throw new Error(`Cannot connect to server. If the server was sleeping, it takes ~30 seconds to wake up. Please wait a moment and click Load again.`);
-        }
-
-        if (!response.ok) {
-            const errJson = await response.json().catch(() => ({}));
-            throw new Error(errJson.error || `Server error (${response.status})`);
-        }
-
-        const data = await response.json();
-        state.calendarData = data;
-
-        // Merge all episodes by unique identity (MAL ID / AniList ID + Episode Number)
-        if (!state.allEpisodes) state.allEpisodes = [];
-        (data.days || []).forEach(d => {
-            (d.episodes || []).forEach(ep => {
-                const existingIdx = state.allEpisodes.findIndex(e => 
-                    (e.id && ep.id && e.id === ep.id) ||
-                    (e.malId && ep.malId && e.malId === ep.malId && e.episodeNumber === ep.episodeNumber) ||
-                    (e.aniListId && ep.aniListId && e.aniListId === ep.aniListId && e.episodeNumber === ep.episodeNumber)
-                );
-
-                if (existingIdx >= 0) {
-                    state.allEpisodes[existingIdx] = ep;
-                } else {
-                    state.allEpisodes.push(ep);
-                }
-            });
-        });
+        const y = state.startDate.getFullYear();
+        const m = state.startDate.getMonth() + 1;
+        
+        // Fetch current month + next month for seamless navigation
+        await fetchMonthData(y, m, false);
+        
+        const nextMonthDate = new Date(state.startDate);
+        nextMonthDate.setMonth(nextMonthDate.getMonth() + 1);
+        await fetchMonthData(nextMonthDate.getFullYear(), nextMonthDate.getMonth() + 1, false);
 
         renderSchedule();
     } catch (err) {
         console.error("Fetch schedule error:", err);
-        if (showOverlay) {
-            alert(err.message);
-        }
+        alert(err.message);
     } finally {
-        if (showOverlay) {
-            hideLoading();
-        }
+        hideLoading();
+    }
+}
+
+async function fetchMonthData(year, month, reRender = true) {
+    if (!state.username) return;
+    const monthKey = `${year}-${month}`;
+    if (state.loadedMonths.has(monthKey)) return;
+
+    const isSameOrigin = window.location.origin.includes('onrender.com') || window.location.origin.includes('localhost:5000');
+    const apiBase = isSameOrigin ? '' : BACKEND_API_URL;
+    const primaryUrl = `${apiBase}/api/calendar/month?platform=${encodeURIComponent(state.platform)}&username=${encodeURIComponent(state.username)}&year=${year}&month=${month}`;
+
+    let response;
+    try {
+        response = await fetch(primaryUrl);
+    } catch (fetchErr) {
+        throw new Error(`Cannot connect to server. If the server was sleeping, it takes ~30 seconds to wake up. Please wait a moment and click Load again.`);
+    }
+
+    if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        throw new Error(errJson.error || `Server error (${response.status})`);
+    }
+
+    const data = await response.json();
+    state.calendarData = data;
+    state.loadedMonths.add(monthKey);
+
+    // Merge all episodes by unique identity
+    (data.days || []).forEach(d => {
+        (d.episodes || []).forEach(ep => {
+            const existingIdx = state.allEpisodes.findIndex(e => 
+                (e.id && ep.id && e.id === ep.id) ||
+                (e.malId && ep.malId && e.malId === ep.malId && e.episodeNumber === ep.episodeNumber) ||
+                (e.aniListId && ep.aniListId && e.aniListId === ep.aniListId && e.episodeNumber === ep.episodeNumber)
+            );
+
+            if (existingIdx >= 0) {
+                state.allEpisodes[existingIdx] = ep;
+            } else {
+                state.allEpisodes.push(ep);
+            }
+        });
+    });
+
+    if (reRender) {
+        renderSchedule();
     }
 }
 
@@ -394,6 +413,11 @@ function startLiveTickers() {
 
     updateClock();
     setInterval(updateClock, 1000);
+
+    // Keepalive ping to keep Render server awake 24/7 while tab is open
+    setInterval(() => {
+        fetch(`${BACKEND_API_URL}/api/status`).catch(() => {});
+    }, 4 * 60 * 1000);
 }
 
 function getLiveTimeFormatted() {

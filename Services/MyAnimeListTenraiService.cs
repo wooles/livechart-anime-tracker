@@ -349,26 +349,59 @@ query ($page: Int, $perPage: Int, $mediaIds: [Int], $startSec: Int, $endSec: Int
             foreach (var item in watchingList)
             {
                 if (processedMalIds.Contains(item.malId)) continue; // Already matched with exact airing time!
+                if (item.airingStatus == 1) continue; // Skip finished/completed shows
 
-                if (item.airingStatus == 2)
+                if (item.airingStatus == 2) // Currently Airing
                 {
                     if (item.endDate.HasValue && item.endDate.Value < monthStart) continue;
                     if (item.startDate.HasValue && item.startDate.Value > monthEnd) continue;
                 }
-
-                if (item.airingStatus == 3)
+                else if (item.airingStatus == 3) // Not yet aired
                 {
-                    if (!item.startDate.HasValue || item.startDate.Value > monthEnd) continue;
+                    if (!item.startDate.HasValue || item.startDate.Value < monthStart || item.startDate.Value > monthEnd) continue;
+                }
+                else
+                {
+                    continue;
                 }
 
                 DateTime start = item.startDate ?? monthStart;
                 if (start > monthEnd) continue;
                 if (item.endDate.HasValue && item.endDate.Value < monthStart) continue;
 
-                DayOfWeek airDay = start.DayOfWeek;
+                // Handle single release media (Movies / Specials)
+                if (item.mediaType == "Movie" || item.mediaType == "Special")
+                {
+                    if (item.startDate.HasValue && item.startDate.Value >= monthStart && item.startDate.Value <= monthEnd)
+                    {
+                        var airUtc = new DateTimeOffset(item.startDate.Value, TimeSpan.Zero);
+                        episodes.Add(new CalendarMonthEpisode
+                        {
+                            Id = $"mal_{item.malId}_m",
+                            MalId = item.malId,
+                            TitleEnglish = item.title,
+                            TitleRomaji = item.title,
+                            CoverImage = item.img,
+                            Format = item.mediaType,
+                            TotalEpisodes = 1,
+                            EpisodeNumber = 1,
+                            AiringAt = airUtc,
+                            AiringTimeFormatted = airUtc.ToString("HH:mm"),
+                            AiringDateFormatted = airUtc.ToString("yyyy-MM-dd"),
+                            TimeUntilAiringSeconds = (long)(airUtc - DateTimeOffset.UtcNow).TotalSeconds,
+                            AverageScore = item.score > 0 ? item.score : null,
+                            MalUrl = $"https://myanimelist.net/anime/{item.malId}",
+                            SiteUrl = $"https://myanimelist.net/anime/{item.malId}",
+                            UserProgress = item.watched,
+                            UserScore = item.score > 0 ? item.score : null,
+                            ListStatus = item.listStatus ?? "Watching"
+                        });
+                    }
+                    continue;
+                }
 
-                // Derive a realistic Japanese TV broadcast time based on anime ID (e.g. 23:00, 23:30, 24:00, 24:30 JST = 14:00..16:30 UTC)
-                int hourJst = 23 + ((item.malId % 5) / 2); // 23 or 24 or 25
+                DayOfWeek airDay = start.DayOfWeek;
+                int hourJst = 23 + ((item.malId % 5) / 2);
                 int minJst = (item.malId % 2 == 0) ? 0 : 30;
                 int hourUtc = (hourJst - 9 + 24) % 24;
 
