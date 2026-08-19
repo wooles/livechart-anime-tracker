@@ -50,35 +50,7 @@ A high-performance **.NET 8** web application providing an ultra-compact, full-s
 
 ---
 
-## 🚀 Running Locally
 
-### Quick Start (Windows):
-Double-click **`run.bat`** (or execute `.\run.ps1` in PowerShell).
-The application will launch on **http://localhost:5000** and automatically open in your default browser.
-
-### Using .NET CLI:
-```bash
-# Run Web Server
-dotnet run --server
-
-# CLI Terminal Output
-dotnet run -- --calendar myanimelist wooles 2026 8
-
-# Export iCalendar file (.ics)
-dotnet run -- --export-ics myanimelist wooles calendar.ics
-```
-
----
-
-## 📡 REST API Endpoints
-
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `GET` | `/api/calendar/month?platform={p}&username={u}&year={y}&month={m}` | Returns monthly grid JSON with all episodes, accurate air times, and metadata. |
-| `GET` | `/api/export/ics?platform={p}&username={u}&year={y}&month={m}` | Generates and downloads RFC 5545 `.ics` file for the month. |
-| `GET` | `/api/status` | Health check endpoint returning versions, server time, and supported platforms. |
-
----
 
 ## 🔗 Related Projects
 
