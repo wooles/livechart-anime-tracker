@@ -720,6 +720,21 @@ function openDetailModal(ep) {
             });
         }
 
+        // Nyaa.si (English-translated releases)
+        const nyaaTitle = (ep.titleRomaji || ep.displayTitle || ep.titleEnglish || '').trim();
+        if (nyaaTitle) {
+            const nyaaSvg = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M4.5 4L8 8.5C9.2 8.2 10.5 8 12 8s2.8.2 4 .5L19.5 4 18 10.5C20 12 21 14 21 16c0 3.5-4 6-9 6s-9-2.5-9-6c0-2 1-4 3-5.5L4.5 4zm4 10a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm7 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"/></svg>`;
+            const nyaaBtn = document.createElement('a');
+            nyaaBtn.href = `https://nyaa.si/?f=0&c=1_2&q=${encodeURIComponent(nyaaTitle)}`;
+            nyaaBtn.target = '_blank';
+            nyaaBtn.rel = 'noopener noreferrer';
+            nyaaBtn.className = 'streaming-btn nyaa';
+            nyaaBtn.title = `Search English-translated releases for "${nyaaTitle}" on Nyaa.si`;
+            nyaaBtn.innerHTML = `${nyaaSvg} <span>Nyaa.si</span>`;
+            streamContainer.appendChild(nyaaBtn);
+            validLinksCount++;
+        }
+
         if (streamSection) {
             if (validLinksCount > 0) {
                 streamSection.classList.remove('hidden');
@@ -744,13 +759,6 @@ function openDetailModal(ep) {
     }
     if (ep.kitsuUrl || ep.kitsuId) {
         addLink(links, ep.kitsuUrl || `https://kitsu.app/anime/${ep.kitsuId}`, '🦊 Kitsu');
-    }
-
-    // Nyaa.si English-translated releases
-    const nyaaTitle = (ep.titleRomaji || ep.displayTitle || ep.titleEnglish || '').trim();
-    if (nyaaTitle) {
-        const nyaaUrl = `https://nyaa.si/?f=0&c=1_2&q=${encodeURIComponent(nyaaTitle)}`;
-        addLink(links, nyaaUrl, '🐱 Nyaa.si');
     }
 
     document.getElementById('detailModal').classList.remove('hidden');

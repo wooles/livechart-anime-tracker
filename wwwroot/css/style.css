@@ -750,6 +750,16 @@ html, body {
     color: #ffffff;
 }
 
+.streaming-btn.nyaa {
+    background: #234d79;
+    border-color: #3b82f6;
+    color: #ffffff;
+}
+
+.streaming-btn.nyaa:hover {
+    background: #2d6199;
+}
+
 .streaming-btn.search-fallback {
     background: var(--bg-card);
     border: 1px dashed var(--border-color);
