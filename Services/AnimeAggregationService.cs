@@ -61,8 +61,20 @@ namespace LiveChartTracker.Services
 
             switch (platform.ToLowerInvariant())
             {
+                case "all":
+                case "global":
+                case "season":
+                    (avatarUrl, episodes, totalWatching) = await _aniListService.GetSeasonalMonthEpisodesAsync(year, month);
+                    break;
                 case "anilist":
-                    (avatarUrl, episodes, totalWatching) = await _aniListService.GetWatchingMonthEpisodesAsync(username, year, month);
+                    if (string.Equals(username, "all", StringComparison.OrdinalIgnoreCase))
+                    {
+                        (avatarUrl, episodes, totalWatching) = await _aniListService.GetSeasonalMonthEpisodesAsync(year, month);
+                    }
+                    else
+                    {
+                        (avatarUrl, episodes, totalWatching) = await _aniListService.GetWatchingMonthEpisodesAsync(username, year, month);
+                    }
                     break;
                 case "kitsu":
                     (avatarUrl, episodes, totalWatching) = await _kitsuService.GetWatchingMonthEpisodesAsync(username, year, month);
@@ -72,7 +84,7 @@ namespace LiveChartTracker.Services
                     (avatarUrl, episodes, totalWatching) = await _malTenraiService.GetWatchingMonthEpisodesAsync(username, year, month);
                     break;
                 default:
-                    throw new ArgumentException($"Nieobsługiwana platforma: {platform}. Dostępne: AniList, Kitsu, MyAnimeList");
+                    throw new ArgumentException($"Nieobsługiwana platforma: {platform}. Dostępne: All, MyAnimeList, AniList, Kitsu");
             }
 
             // Group episodes by Date (YYYY-MM-DD)

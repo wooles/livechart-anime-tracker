@@ -13,6 +13,7 @@ namespace LiveChartTracker.Services
     public interface IAniListService
     {
         Task<(string? avatarUrl, List<CalendarMonthEpisode> episodes, int totalWatching)> GetWatchingMonthEpisodesAsync(string username, int year, int month);
+        Task<(string? avatarUrl, List<CalendarMonthEpisode> episodes, int totalWatching)> GetSeasonalMonthEpisodesAsync(int year, int month);
     }
 
     public class AniListService : IAniListService
@@ -39,8 +40,11 @@ query ($userName: String) {
       large
     }
   }
-  MediaListCollection(userName: $userName, type: ANIME, status_in: [CURRENT, PLANNING]) {
+  MediaListCollection(userName: $userName, type: ANIME) {
     lists {
+      name
+      isCustomList
+      status
       entries {
         status
         score
@@ -102,18 +106,25 @@ query ($userName: String) {
             {
                 foreach (var l in lists)
                 {
+                    string listStatusAttr = l?["status"]?.ToString() ?? "";
                     var entries = l?["entries"]?.AsArray();
                     if (entries == null) continue;
+
                     foreach (var e in entries)
                     {
                         var media = e?["media"];
                         int? mediaId = media?["id"]?.GetValue<int?>();
                         if (mediaId.HasValue && media != null && e != null)
                         {
+                            string rawStatus = e["status"]?.ToString() ?? listStatusAttr;
+                            if (rawStatus != "CURRENT" && rawStatus != "PLANNING" && rawStatus != "REPEATING")
+                            {
+                                continue;
+                            }
+
                             int progress = e["progress"]?.GetValue<int?>() ?? 0;
                             double? score = e["score"]?.GetValue<double?>();
-                            string rawStatus = e["status"]?.ToString() ?? "CURRENT";
-                            string listStatus = rawStatus == "PLANNING" ? "PlanToWatch" : "Watching";
+                            string listStatus = (rawStatus == "PLANNING") ? "PlanToWatch" : "Watching";
                             watchingEntries[mediaId.Value] = (media, progress, score, listStatus);
                         }
                     }
@@ -335,6 +346,140 @@ query ($page: Int, $perPage: Int, $mediaId_in: [Int], $airingAt_greater: Int, $a
             }
 
             return (avatarUrl, episodesList, totalWatching);
+        }
+
+        public async Task<(string? avatarUrl, List<CalendarMonthEpisode> episodes, int totalWatching)> GetSeasonalMonthEpisodesAsync(int year, int month)
+        {
+            string season = month switch
+            {
+                1 or 2 or 3 => "WINTER",
+                4 or 5 or 6 => "SPRING",
+                7 or 8 or 9 => "SUMMER",
+                _ => "FALL"
+            };
+
+            const string seasonQuery = @"
+query ($page: Int, $season: MediaSeason, $seasonYear: Int) {
+  Page(page: $page, perPage: 50) {
+    pageInfo {
+      hasNextPage
+    }
+    media(season: $season, seasonYear: $seasonYear, type: ANIME, sort: POPULARITY_DESC) {
+      id
+      idMal
+      title {
+        romaji
+        english
+        native
+      }
+      coverImage {
+        extraLarge
+        large
+      }
+      bannerImage
+      format
+      status
+      episodes
+      duration
+      averageScore
+      genres
+      studios(isMain: true) {
+        nodes {
+          name
+        }
+      }
+      description
+      siteUrl
+      nextAiringEpisode {
+        episode
+        airingAt
+        timeUntilAiring
+      }
+    }
+  }
+}";
+
+            var episodesList = new List<CalendarMonthEpisode>();
+            var mediaList = new List<JsonNode>();
+
+            var startOfMonth = new DateTimeOffset(year, month, 1, 0, 0, 0, TimeSpan.Zero).AddDays(-15);
+            var endOfMonth = new DateTimeOffset(year, month, 1, 0, 0, 0, TimeSpan.Zero).AddMonths(1).AddDays(15);
+            long startSec = startOfMonth.ToUnixTimeSeconds();
+            long endSec = endOfMonth.ToUnixTimeSeconds();
+
+            for (int p = 1; p <= 2; p++)
+            {
+                var res = await ExecuteGraphQLAsync(seasonQuery, new { page = p, season = season, seasonYear = year });
+                var pageNode = res?["data"]?["Page"];
+                if (pageNode == null) break;
+
+                var items = pageNode["media"]?.AsArray();
+                if (items != null)
+                {
+                    foreach (var it in items)
+                    {
+                        if (it != null) mediaList.Add(it);
+                    }
+                }
+
+                bool hasNext = pageNode["pageInfo"]?["hasNextPage"]?.GetValue<bool>() ?? false;
+                if (!hasNext) break;
+            }
+
+            foreach (var media in mediaList)
+            {
+                int mediaId = media["id"]?.GetValue<int>() ?? 0;
+                if (mediaId == 0) continue;
+
+                var nextEpNode = media["nextAiringEpisode"];
+                if (nextEpNode != null)
+                {
+                    int anchorEp = nextEpNode["episode"]?.GetValue<int>() ?? 1;
+                    long anchorAirSec = nextEpNode["airingAt"]?.GetValue<long>() ?? 0;
+                    int? totalEp = media["episodes"]?.GetValue<int?>();
+
+                    var anchorAirUtc = DateTimeOffset.FromUnixTimeSeconds(anchorAirSec).ToUniversalTime();
+
+                    for (int k = -12; k <= 12; k++)
+                    {
+                        int targetEp = anchorEp + k;
+                        if (targetEp < 1) continue;
+                        if (totalEp.HasValue && targetEp > totalEp.Value) continue;
+
+                        var targetAirUtc = anchorAirUtc.AddDays(k * 7);
+                        if (targetAirUtc < startOfMonth || targetAirUtc > endOfMonth) continue;
+
+                        episodesList.Add(new CalendarMonthEpisode
+                        {
+                            Id = $"season_{mediaId}_ep{targetEp}",
+                            AniListId = mediaId,
+                            MalId = media["idMal"]?.GetValue<int?>(),
+                            TitleRomaji = media["title"]?["romaji"]?.ToString() ?? "",
+                            TitleEnglish = media["title"]?["english"]?.ToString() ?? "",
+                            TitleNative = media["title"]?["native"]?.ToString() ?? "",
+                            CoverImage = media["coverImage"]?["extraLarge"]?.ToString() ?? media["coverImage"]?["large"]?.ToString() ?? "",
+                            BannerImage = media["bannerImage"]?.ToString(),
+                            Format = media["format"]?.ToString() ?? "TV",
+                            Status = media["status"]?.ToString() ?? "RELEASING",
+                            TotalEpisodes = totalEp,
+                            EpisodeDuration = media["duration"]?.GetValue<int?>(),
+                            EpisodeNumber = targetEp,
+                            AiringAt = targetAirUtc,
+                            AiringTimeFormatted = targetAirUtc.ToString("HH:mm"),
+                            AiringDateFormatted = targetAirUtc.ToString("yyyy-MM-dd"),
+                            TimeUntilAiringSeconds = (long)(targetAirUtc - DateTimeOffset.UtcNow).TotalSeconds,
+                            AverageScore = media["averageScore"]?.GetValue<double?>(),
+                            Synopsis = media["description"]?.ToString() ?? "",
+                            SiteUrl = media["siteUrl"]?.ToString(),
+                            AniListUrl = media["siteUrl"]?.ToString(),
+                            MalUrl = media["idMal"] != null ? $"https://myanimelist.net/anime/{media["idMal"]}" : null,
+                            ListStatus = "Airing"
+                        });
+                    }
+                }
+            }
+
+            return ("https://sort.moe/favicon.ico", episodesList.OrderBy(e => e.AiringAt).ToList(), mediaList.Count);
         }
 
         private async Task<JsonNode?> ExecuteGraphQLAsync(string query, object variables)

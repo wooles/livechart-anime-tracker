@@ -45,10 +45,8 @@ app.UseStaticFiles();
 // 1. Monthly Calendar of Watching Anime
 app.MapGet("/api/calendar/month", async (string? platform, string? username, int? year, int? month, bool? refresh, IAnimeAggregationService aggService) =>
 {
-    if (string.IsNullOrWhiteSpace(platform) || string.IsNullOrWhiteSpace(username))
-    {
-        return Results.BadRequest(new { error = "Wymagane parametry 'platform' oraz 'username'." });
-    }
+    string plat = string.IsNullOrWhiteSpace(platform) ? "all" : platform.Trim();
+    string user = string.IsNullOrWhiteSpace(username) ? "All Airing Anime" : username.Trim();
 
     int targetYear = year ?? DateTime.UtcNow.Year;
     int targetMonth = month ?? DateTime.UtcNow.Month;
@@ -60,7 +58,7 @@ app.MapGet("/api/calendar/month", async (string? platform, string? username, int
 
     try
     {
-        var calendar = await aggService.GetMonthlyCalendarAsync(platform, username, targetYear, targetMonth, refresh ?? false);
+        var calendar = await aggService.GetMonthlyCalendarAsync(plat, user, targetYear, targetMonth, refresh ?? false);
         return Results.Ok(calendar);
     }
     catch (Exception ex)

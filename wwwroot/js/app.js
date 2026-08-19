@@ -116,19 +116,32 @@ async function checkAndFetchMonthIfNeeded() {
     const endM = endDate.getMonth() + 1;
     const keyEnd = `${endY}-${endM}`;
 
+    let needsRerender = false;
     if (!state.loadedMonths.has(keyStart)) {
         await fetchMonthData(startY, startM, false);
+        needsRerender = true;
     }
     if (!state.loadedMonths.has(keyEnd)) {
         await fetchMonthData(endY, endM, false);
+        needsRerender = true;
+    }
+    if (needsRerender) {
+        renderSchedule();
     }
 }
 
 async function handleLoadCalendar() {
-    const user = document.getElementById('usernameInput').value.trim();
+    let user = document.getElementById('usernameInput').value.trim();
     const plat = document.getElementById('platformSelect').value;
 
-    if (!user) return;
+    if (!user) {
+        if (plat === 'All') {
+            user = 'All Airing Anime';
+        } else {
+            user = 'wooles';
+            document.getElementById('usernameInput').value = 'wooles';
+        }
+    }
 
     state.username = user;
     state.platform = plat;
