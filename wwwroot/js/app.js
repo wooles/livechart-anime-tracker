@@ -316,26 +316,61 @@ async function fetchAniListWatching(username, year, month) {
     return { episodes, totalWatching };
 }
 
-// 2. MyAnimeList Client-side via Jikan v4 + AniList Live Broadcasting Schedules
+// 2. MyAnimeList Watching (via Tenrai.Net proxy or direct MAL endpoints + LiveChart schedule matching)
 async function fetchMalWatching(username, year, month) {
     let watching = [];
+    
+    // Endpoint 1: Backend MAL proxy (/api/mal/watchlist)
     try {
-        const jikanRes = await fetch(`https://api.jikan.moe/v4/users/${encodeURIComponent(username)}/userlist/anime?status=watching`);
-        if (jikanRes.ok) {
-            const jikanData = await jikanRes.json();
-            watching = (jikanData.data || []).map(item => ({
-                malId: item.entry?.mal_id,
-                title: item.entry?.title,
-                image: item.entry?.images?.jpg?.large_image_url,
-                watched: item.episodes_watched || 0,
-                score: item.score || 0
-            }));
+        const res = await fetch(`/api/mal/watchlist/${encodeURIComponent(username)}`);
+        if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data) && data.length) {
+                watching = data.map(item => ({
+                    malId: item.malId || item.id,
+                    title: item.title,
+                    image: item.coverUrl,
+                    watched: item.watchedEpisodes || 0,
+                    score: item.score || 0
+                }));
+            }
         }
-    } catch (e) {
-        console.warn("Jikan fetch error:", e);
+    } catch {}
+
+    // Endpoint 2: Direct public MAL load.json through CORS proxies
+    if (watching.length === 0) {
+        const malUrl = `https://myanimelist.net/animelist/${encodeURIComponent(username)}/load.json?status=1`;
+        const proxies = [
+            `/api/mal/watchlist/${encodeURIComponent(username)}`,
+            `https://api.allorigins.win/raw?url=${encodeURIComponent(malUrl)}`,
+            `https://corsproxy.io/?url=${encodeURIComponent(malUrl)}`
+        ];
+
+        for (const url of proxies) {
+            try {
+                const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+                if (!res.ok) continue;
+                let data = await res.json();
+                if (typeof data === 'string') {
+                    try { data = JSON.parse(data); } catch {}
+                }
+                if (data && data.contents) data = data.contents;
+                if (Array.isArray(data) && data.length) {
+                    watching = data.map(item => ({
+                        malId: item.anime_id || item.malId,
+                        title: item.anime_title_eng || item.anime_title || item.title,
+                        image: item.anime_image_path || item.coverUrl,
+                        watched: item.num_watched_episodes || item.watchedEpisodes || 0,
+                        score: item.score || 0,
+                        airingStatus: item.anime_airing_status !== undefined ? item.anime_airing_status : 1
+                    }));
+                    break;
+                }
+            } catch {}
+        }
     }
 
-    // Fallback: try AniList MediaListCollection with matching username
+    // Fallback: AniList with matching username
     if (watching.length === 0) {
         try {
             return await fetchAniListWatching(username, year, month);
@@ -497,7 +532,6 @@ async function fetchKitsuWatching(username, year, month) {
         }
     });
 
-    // Match titles via AniList GraphQL for exact schedules
     return await fetchAniListWatching(username, year, month);
 }
 

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -51,33 +51,7 @@ namespace LiveChartTracker.Services
                 var response = await _httpClient.SendAsync(req);
                 if (!response.IsSuccessStatusCode)
                 {
-                    try
-                    {
-                        var jikanUrl = $"https://api.jikan.moe/v4/users/{Uri.EscapeDataString(username)}/userlist/anime?status=watching";
-                        var jikanRes = await _httpClient.GetAsync(jikanUrl);
-                        if (jikanRes.IsSuccessStatusCode)
-                        {
-                            var jikanJson = JsonNode.Parse(await jikanRes.Content.ReadAsStringAsync());
-                            var jikanData = jikanJson?["data"]?.AsArray();
-                            if (jikanData != null)
-                            {
-                                foreach (var item in jikanData)
-                                {
-                                    var entry = item?["entry"];
-                                    int mId = entry?["mal_id"]?.GetValue<int>() ?? 0;
-                                    string t = entry?["title"]?.ToString() ?? "";
-                                    string img = entry?["images"]?["jpg"]?["large_image_url"]?.ToString() ?? "";
-                                    int w = item?["episodes_watched"]?.GetValue<int>() ?? 0;
-                                    double sc = item?["score"]?.GetValue<double>() ?? 0;
-                                    watchingList.Add((mId, t, img, w, 0, sc * 10, "TV", 1, null, null));
-                                }
-                            }
-                            break;
-                        }
-                    }
-                    catch { }
-
-                    throw new Exception($"Failed to fetch MyAnimeList for user {username}. Please ensure the list is public.");
+                    throw new Exception($"Failed to fetch MyAnimeList for user {username}. Please ensure the watchlist is public on MyAnimeList.");
                 }
 
                 var jsonStr = await response.Content.ReadAsStringAsync();
