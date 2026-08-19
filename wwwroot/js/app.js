@@ -102,6 +102,29 @@ function saveLocalCache() {
 }
 
 function setupEventListeners() {
+    const userForm = document.getElementById('userForm');
+    if (userForm) {
+        userForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            handleLoadCalendar(true);
+        });
+    }
+
+    const loadBtn = document.getElementById('loadBtn');
+    if (loadBtn) {
+        loadBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            handleLoadCalendar(true);
+        });
+    }
+
+    const platformSelect = document.getElementById('platformSelect');
+    if (platformSelect) {
+        platformSelect.addEventListener('change', () => {
+            handleLoadCalendar(true);
+        });
+    }
+
     const titleToggle = document.getElementById('titleLangToggle');
     if (titleToggle) {
         titleToggle.addEventListener('click', () => {
@@ -208,24 +231,18 @@ async function handleLoadCalendar(showSpinner = true) {
         }
     }
 
-    const isUserOrPlatChanged = (state.username !== user || state.platform !== plat);
-
     state.username = user;
     state.platform = plat;
 
     localStorage.setItem('anime_cal_user', user);
     localStorage.setItem('anime_cal_plat', plat);
 
-    if (isUserOrPlatChanged || showSpinner) {
-        // Reset memory state and check local cache for this specific user
+    if (showSpinner) {
         state.allEpisodes = [];
         state.loadedMonths.clear();
-        restoreLocalCache();
-    }
-
-    // Only show full-screen blocking overlay if user explicitly clicked 'Load' or has no cached data
-    if (showSpinner || state.allEpisodes.length === 0) {
         showLoading(`Loading anime schedule for ${state.username} (${state.platform})...`);
+    } else if (state.allEpisodes.length === 0) {
+        restoreLocalCache();
     }
 
     try {
@@ -247,7 +264,9 @@ async function handleLoadCalendar(showSpinner = true) {
             alert(err.message);
         }
     } finally {
-        hideLoading();
+        if (showSpinner) {
+            hideLoading();
+        }
     }
 }
 
