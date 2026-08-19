@@ -1,374 +1,125 @@
-﻿<!DOCTYPE html>
-<html lang="pl" data-theme="dark">
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LiveChart Anime Tracker | Harmonogram & Listy Anime</title>
+    <title>Anime Watching Calendar | Monthly Schedule</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/style.css">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
 </head>
 <body>
-    <!-- HEADER -->
+    <!-- TOP HEADER -->
     <header class="app-header">
         <div class="header-container">
             <div class="brand">
-                <div class="brand-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                        <line x1="16" y1="2" x2="16" y2="6"></line>
-                        <line x1="8" y1="2" x2="8" y2="6"></line>
-                        <line x1="3" y1="10" x2="21" y2="10"></line>
-                    </svg>
-                </div>
+                <span class="brand-icon">📅</span>
                 <div class="brand-text">
-                    <span class="brand-title">LIVECHART<span class="highlight">.TRACKER</span></span>
-                    <span class="brand-subtitle">AniList • Kitsu • MyAnimeList (Tenrai)</span>
+                    <span class="brand-title">ANIME<span class="highlight">.CALENDAR</span></span>
                 </div>
             </div>
 
-            <!-- MAIN NAVIGATION -->
-            <nav class="main-nav">
-                <button class="nav-btn active" data-view="schedule">
-                    <span class="icon">📅</span> Ramówka
-                </button>
-                <button class="nav-btn" data-view="seasonal">
-                    <span class="icon">🌸</span> Sezony
-                </button>
-                <button class="nav-btn" data-view="library">
-                    <span class="icon">📚</span> Moja Lista
-                </button>
-            </nav>
+            <!-- USER FORM -->
+            <form id="userForm" class="user-input-form" onsubmit="event.preventDefault(); handleLoadCalendar();">
+                <select id="platformSelect" class="form-select">
+                    <option value="AniList" selected>AniList</option>
+                    <option value="Kitsu">Kitsu</option>
+                    <option value="MyAnimeList">MyAnimeList</option>
+                </select>
+                <div class="input-wrapper">
+                    <input type="text" id="usernameInput" class="form-control" placeholder="Username (e.g. wooles)" required autocomplete="on">
+                </div>
+                <button type="submit" id="loadBtn" class="btn btn-primary">Load</button>
+            </form>
 
-            <!-- USER & UTILITIES -->
             <div class="header-actions">
-                <button id="userSyncBtn" class="btn btn-outline">
-                    <span class="icon">👤</span>
-                    <span id="userBtnText">Połącz konto</span>
+                <span class="stat-pill stat-clock" id="localClockBadge" title="Your current local time and timezone">⏰ --:--:--</span>
+                <button id="exportIcsBtn" class="btn btn-outline btn-sm" title="Export calendar to .ics file">
+                    📥 .ics
                 </button>
-                <button id="exportIcsBtn" class="btn btn-primary" title="Pobierz kalendarz .ics">
-                    <span class="icon">📥</span> Eksportuj .ics
-                </button>
-                <button id="themeToggle" class="btn-icon" title="Zmień motyw">
+                <button id="themeToggle" class="btn-icon" title="Toggle theme">
                     <span id="themeIcon">🌙</span>
                 </button>
             </div>
         </div>
     </header>
 
-    <!-- ACTIVE USER BADGE / STATUS BAR -->
-    <div id="userStatusBar" class="user-status-bar hidden">
-        <div class="user-info-container">
-            <div class="user-avatar-wrap">
-                <img id="userAvatar" src="" alt="Avatar" class="user-avatar">
-                <span id="userPlatformBadge" class="platform-badge">AniList</span>
+    <!-- CALENDAR NAV & USER STATS -->
+    <section class="calendar-toolbar">
+        <div class="toolbar-container">
+            <div class="month-navigation">
+                <button id="prevMonthBtn" class="btn btn-secondary btn-sm nav-btn">&larr; Prev</button>
+                <h2 id="currentMonthDisplay" class="month-title">August 2026</h2>
+                <button id="nextMonthBtn" class="btn btn-secondary btn-sm nav-btn">Next &rarr;</button>
+                <button id="todayBtn" class="btn btn-outline btn-sm">Today</button>
             </div>
-            <div class="user-details">
-                <div class="user-name-row">
-                    <span class="user-greeting">Zalogowano jako:</span>
-                    <strong id="userName">Nazwa</strong>
-                </div>
-                <div class="user-stats">
-                    <span class="stat-pill stat-watching">Oglądane: <strong id="userWatchingCount">0</strong></span>
-                    <span class="stat-pill stat-planning">Planowane: <strong id="userPlanningCount">0</strong></span>
-                    <span class="stat-pill stat-completed">Ukończone: <strong id="userCompletedCount">0</strong></span>
-                </div>
+
+            <div id="calendarStats" class="calendar-stats hidden">
+                <span class="user-badge-text">User: <strong id="statsUsername">wooles</strong> (<span id="statsPlatform">AniList</span>)</span>
+                <span class="stat-pill stat-watching">Watching: <strong id="statsWatchingCount">0</strong></span>
+                <span class="stat-pill stat-tz" id="timezoneBadge">Local Time</span>
             </div>
         </div>
-        <div class="user-actions">
-            <label class="switch-container" title="Pokaż w ramówce tylko anime z Twojej listy">
-                <input type="checkbox" id="myScheduleToggle">
-                <span class="switch-slider"></span>
-                <span class="switch-label">Tylko mój kalendarz</span>
-            </label>
-            <button id="disconnectUserBtn" class="btn btn-sm btn-danger">Rozłącz</button>
+    </section>
+
+    <!-- MAIN CALENDAR CONTAINER (FULL SCREEN WIDTH) -->
+    <main class="calendar-wrapper">
+        <!-- Weekday Headers -->
+        <div class="weekdays-grid">
+            <div class="weekday-cell">Monday</div>
+            <div class="weekday-cell">Tuesday</div>
+            <div class="weekday-cell">Wednesday</div>
+            <div class="weekday-cell">Thursday</div>
+            <div class="weekday-cell">Friday</div>
+            <div class="weekday-cell weekend">Saturday</div>
+            <div class="weekday-cell weekend">Sunday</div>
         </div>
-    </div>
 
-    <!-- MAIN APP CONTAINER -->
-    <main class="app-main">
-        <!-- CONTROLS & FILTER TOOLBAR -->
-        <section class="toolbar">
-            <!-- Day Selector (for Schedule View) -->
-            <div id="scheduleToolbar" class="toolbar-group day-pills">
-                <button class="pill-btn active" data-day="ALL">Wszystkie</button>
-                <button class="pill-btn" data-day="Monday">Poniedziałek</button>
-                <button class="pill-btn" data-day="Tuesday">Wtorek</button>
-                <button class="pill-btn" data-day="Wednesday">Środa</button>
-                <button class="pill-btn" data-day="Thursday">Czwartek</button>
-                <button class="pill-btn" data-day="Friday">Piątek</button>
-                <button class="pill-btn" data-day="Saturday">Sobota</button>
-                <button class="pill-btn" data-day="Sunday">Niedziela</button>
-            </div>
+        <!-- Days Grid -->
+        <div id="calendarGrid" class="days-grid hidden">
+            <!-- 35 or 42 Day Cells injected via JS -->
+        </div>
 
-            <!-- Season Selector (for Seasonal View) -->
-            <div id="seasonalToolbar" class="toolbar-group seasonal-controls hidden">
-                <div class="season-buttons">
-                    <button class="season-btn" data-season="WINTER">❄️ Zima</button>
-                    <button class="season-btn" data-season="SPRING">🌸 Wiosna</button>
-                    <button class="season-btn active" data-season="SUMMER">☀️ Lato</button>
-                    <button class="season-btn" data-season="FALL">🍁 Jesień</button>
-                </div>
-                <select id="seasonYearSelect" class="form-select"></select>
-            </div>
-
-            <!-- Library Tabs (for Library View) -->
-            <div id="libraryToolbar" class="toolbar-group library-tabs hidden">
-                <button class="lib-tab active" data-lib-status="WATCHING">Oglądane (<span id="libWatchCount">0</span>)</button>
-                <button class="lib-tab" data-lib-status="PLANNING">Planowane (<span id="libPlanCount">0</span>)</button>
-                <button class="lib-tab" data-lib-status="COMPLETED">Ukończone (<span id="libCompCount">0</span>)</button>
-                <button class="lib-tab" data-lib-status="PAUSED">Wstrzymane (<span id="libPauseCount">0</span>)</button>
-                <button class="lib-tab" data-lib-status="DROPPED">Porzucone (<span id="libDropCount">0</span>)</button>
-            </div>
-
-            <!-- Search & Filters -->
-            <div class="toolbar-filters">
-                <div class="search-box">
-                    <span class="search-icon">🔍</span>
-                    <input type="text" id="searchInput" placeholder="Szukaj anime po tytule, gatunku, studio..." autocomplete="off">
-                    <button id="clearSearchBtn" class="clear-search hidden">&times;</button>
-                </div>
-                <select id="formatFilter" class="form-select">
-                    <option value="ALL">Wszystkie typy</option>
-                    <option value="TV">Serie TV</option>
-                    <option value="MOVIE">Filmy</option>
-                    <option value="OVA">OVA</option>
-                    <option value="ONA">ONA</option>
-                    <option value="SPECIAL">Specjały</option>
-                </select>
-                <select id="genreFilter" class="form-select">
-                    <option value="ALL">Wszystkie gatunki</option>
-                </select>
-            </div>
-        </section>
-
-        <!-- VIEW 1: WEEKLY SCHEDULE -->
-        <section id="scheduleView" class="view-content active">
-            <div class="view-header">
-                <h2>Harmonogram Emisji Anime (Tydzień)</h2>
-                <div class="view-meta">
-                    <span id="scheduleCountBadge" class="badge">0 serii</span>
-                    <span id="timezoneNotice" class="text-muted">Godziny w Twojej strefie czasowej</span>
-                </div>
-            </div>
-
-            <div id="scheduleDaysContainer" class="schedule-days-grid">
-                <!-- Day sections injected via JS -->
-            </div>
-        </section>
-
-        <!-- VIEW 2: SEASONAL CHART -->
-        <section id="seasonalView" class="view-content hidden">
-            <div class="view-header">
-                <h2 id="seasonalTitle">Anime Sezonowe</h2>
-                <div class="view-meta">
-                    <span id="seasonalCountBadge" class="badge">0 serii</span>
-                </div>
-            </div>
-
-            <div id="seasonalGrid" class="anime-cards-grid">
-                <!-- Cards injected via JS -->
-            </div>
-        </section>
-
-        <!-- VIEW 3: USER LIBRARY -->
-        <section id="libraryView" class="view-content hidden">
-            <div class="view-header">
-                <h2 id="libraryTitle">Moja Lista Anime</h2>
-                <div class="view-meta">
-                    <span id="libraryCountBadge" class="badge">0 serii</span>
-                </div>
-            </div>
-
-            <div id="libraryEmptyState" class="empty-state hidden">
-                <div class="empty-icon">📺</div>
-                <h3>Brak podłączonego konta</h3>
-                <p>Połącz swoje konto z AniList, Kitsu lub MyAnimeList, aby zobaczyć i zarządzać listą anime.</p>
-                <button class="btn btn-primary" onclick="document.getElementById('userSyncBtn').click()">Połącz konto teraz</button>
-            </div>
-
-            <div id="libraryGrid" class="anime-cards-grid">
-                <!-- Cards injected via JS -->
-            </div>
-        </section>
-
-        <!-- LOADING INDICATOR -->
-        <div id="loadingOverlay" class="loading-overlay hidden">
-            <div class="spinner"></div>
-            <p id="loadingMessage">Pobieranie danych o anime...</p>
+        <!-- Initial Empty State -->
+        <div id="initialState" class="empty-state">
+            <div class="empty-icon">📺</div>
+            <h3>Enter your username</h3>
+            <p>Enter your <strong>AniList</strong>, <strong>Kitsu</strong>, or <strong>MyAnimeList</strong> username above and click <em>Load</em> to view your monthly anime release schedule in your local time.</p>
         </div>
     </main>
 
-    <!-- MODAL: USER SYNC -->
-    <div id="syncModal" class="modal-backdrop hidden">
+    <!-- ANIME DETAIL MODAL -->
+    <div id="detailModal" class="modal-backdrop hidden">
         <div class="modal-card">
             <div class="modal-header">
-                <h3>Synchronizacja Listy Anime</h3>
-                <button class="modal-close" onclick="closeModal('syncModal')">&times;</button>
+                <h3 id="modalTitle">Episode Details</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
             </div>
             <div class="modal-body">
-                <p class="modal-desc">Wybierz platformę i wpisz swoją nazwę użytkownika, aby zaimportować oglądane serie i dopasować je do kalendarza LiveChart.</p>
-                
-                <div class="platform-selector">
-                    <label class="platform-option">
-                        <input type="radio" name="platformChoice" value="AniList" checked>
-                        <div class="platform-card">
-                            <span class="platform-logo">🔷</span>
-                            <span class="platform-name">AniList</span>
-                            <span class="platform-api">GraphQL API</span>
-                        </div>
-                    </label>
-                    <label class="platform-option">
-                        <input type="radio" name="platformChoice" value="Kitsu">
-                        <div class="platform-card">
-                            <span class="platform-logo">🦊</span>
-                            <span class="platform-name">Kitsu</span>
-                            <span class="platform-api">REST v3 API</span>
-                        </div>
-                    </label>
-                    <label class="platform-option">
-                        <input type="radio" name="platformChoice" value="MyAnimeList">
-                        <div class="platform-card">
-                            <span class="platform-logo">🔵</span>
-                            <span class="platform-name">MyAnimeList</span>
-                            <span class="platform-api">Tenrai.Net & MAL</span>
-                        </div>
-                    </label>
-                </div>
-
-                <div class="form-group">
-                    <label for="syncUsernameInput">Nazwa użytkownika na platformie:</label>
-                    <input type="text" id="syncUsernameInput" class="form-control" placeholder="np. wooles" autofocus>
-                </div>
-
-                <div id="syncError" class="alert alert-danger hidden"></div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeModal('syncModal')">Anuluj</button>
-                <button id="startSyncBtn" class="btn btn-primary">Pobierz i połącz listę</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- MODAL: EXPORT ICS -->
-    <div id="exportModal" class="modal-backdrop hidden">
-        <div class="modal-card">
-            <div class="modal-header">
-                <h3>Eksport Harmonogramu do Kalendarza (.ics)</h3>
-                <button class="modal-close" onclick="closeModal('exportModal')">&times;</button>
-            </div>
-            <div class="modal-body">
-                <p class="modal-desc">Pobierz plik <code>.ics</code> (iCalendar), aby dodać przypomnienia o premierach nowych odcinków do Kalendarza Google, Apple Calendar lub Outlooka.</p>
-
-                <div class="form-group">
-                    <label>Zakres anime:</label>
-                    <div class="radio-group">
-                        <label><input type="radio" name="exportScope" value="watching" checked> Tylko aktualnie oglądane (Watching)</label>
-                        <label><input type="radio" name="exportScope" value="all"> Oglądane + Planowane</label>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label for="reminderSelect">Powiadomienie przed emisją:</label>
-                    <select id="reminderSelect" class="form-select">
-                        <option value="0">Brak powiadomienia</option>
-                        <option value="5">5 minut przed</option>
-                        <option value="15" selected>15 minut przed (zalecane)</option>
-                        <option value="30">30 minut przed</option>
-                        <option value="60">1 godzina przed</option>
-                    </select>
-                </div>
-
-                <div class="instructions-box">
-                    <strong>💡 Jak dodać do Google Calendar:</strong>
-                    <ol>
-                        <li>Pobierz plik <code>.ics</code> klikając poniższy przycisk.</li>
-                        <li>Wejdź na <a href="https://calendar.google.com" target="_blank" rel="noopener">calendar.google.com</a>.</li>
-                        <li>Kliknij ⚙️ Ustawienia &rarr; <em>Importuj i eksportuj</em> &rarr; wskaż pobrany plik.</li>
-                    </ol>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeModal('exportModal')">Zamknij</button>
-                <button id="downloadIcsActionBtn" class="btn btn-primary">Pobierz plik .ics</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- MODAL: ANIME DETAILS -->
-    <div id="detailsModal" class="modal-backdrop hidden">
-        <div class="modal-card modal-large">
-            <div class="modal-header">
-                <h3 id="modalAnimeTitle">Szczegóły Anime</h3>
-                <button class="modal-close" onclick="closeModal('detailsModal')">&times;</button>
-            </div>
-            <div class="modal-body anime-detail-body">
-                <div class="detail-banner-wrapper">
-                    <img id="modalAnimeBanner" src="" alt="Banner" class="detail-banner hidden">
-                </div>
-                <div class="detail-content-layout">
-                    <div class="detail-poster-col">
-                        <img id="modalAnimePoster" src="" alt="Poster" class="detail-poster">
-                        <div id="modalScoreBadge" class="detail-score-badge">⭐ 85%</div>
-                        <div id="modalUserProgressBadge" class="user-progress-badge hidden">Twój postęp: 5/12</div>
-                    </div>
-                    <div class="detail-info-col">
-                        <h2 id="modalTitleEnglish" class="detail-title-en">English Title</h2>
-                        <h4 id="modalTitleRomaji" class="detail-title-ro text-muted">Romaji Title</h4>
-                        <h5 id="modalTitleNative" class="detail-title-na text-muted">Native Title</h5>
-
-                        <div id="modalCountdownBox" class="countdown-hero-box hidden">
-                            <span class="countdown-label">NAJBLIŻSZY ODCINEK:</span>
-                            <div class="countdown-main">
-                                <strong id="modalEpisodeNum">Odcinek 7</strong>
-                                <span id="modalCountdownTime" class="countdown-timer">za 01d 04h 22m</span>
-                            </div>
-                            <span id="modalAiringDate" class="airing-date-sub">Środa, 18:30</span>
+                <div class="modal-flex">
+                    <img id="modalPoster" src="" alt="Poster" class="modal-poster">
+                    <div class="modal-info">
+                        <h2 id="modalAnimeTitle">Anime Title</h2>
+                        <h4 id="modalRomajiTitle" class="text-muted">Romaji</h4>
+                        
+                        <div class="modal-highlight-box">
+                            <span class="modal-ep-badge" id="modalEpBadge">Episode 8</span>
+                            <span class="modal-air-time" id="modalAirTime">August 19, 2026 at 18:30 (Local Time)</span>
                         </div>
 
-                        <div class="detail-meta-grid">
-                            <div class="meta-item">
-                                <span class="meta-label">Format</span>
-                                <span id="modalFormat" class="meta-val">TV</span>
-                            </div>
-                            <div class="meta-item">
-                                <span class="meta-label">Status</span>
-                                <span id="modalStatus" class="meta-val">Emitowane</span>
-                            </div>
-                            <div class="meta-item">
-                                <span class="meta-label">Liczba odcinków</span>
-                                <span id="modalEpisodes" class="meta-val">12</span>
-                            </div>
-                            <div class="meta-item">
-                                <span class="meta-label">Długość odcinka</span>
-                                <span id="modalDuration" class="meta-val">24 min</span>
-                            </div>
-                            <div class="meta-item">
-                                <span class="meta-label">Studio</span>
-                                <span id="modalStudio" class="meta-val">MAPPA</span>
-                            </div>
-                            <div class="meta-item">
-                                <span class="meta-label">Sezon</span>
-                                <span id="modalSeason" class="meta-val">LATO 2026</span>
-                            </div>
-                            <div class="meta-item">
-                                <span class="meta-label">Źródło</span>
-                                <span id="modalSource" class="meta-val">Manga</span>
-                            </div>
+                        <div class="modal-meta-row">
+                            <span class="meta-tag" id="modalFormat">TV</span>
+                            <span class="meta-tag" id="modalProgress">Progress: 5/12</span>
+                            <span class="meta-tag" id="modalScore">⭐ 84%</span>
                         </div>
 
-                        <div class="detail-genres" id="modalGenres">
-                            <!-- Genre pills -->
+                        <div class="modal-synopsis-box">
+                            <p id="modalSynopsis">Synopsis...</p>
                         </div>
 
-                        <div class="detail-synopsis-wrap">
-                            <h4>Opis fabuły:</h4>
-                            <p id="modalSynopsis" class="detail-synopsis">Brak opisu.</p>
-                        </div>
-
-                        <div class="detail-links" id="modalLinks">
+                        <div class="modal-links" id="modalLinks">
                             <!-- Links to MAL, AniList, Kitsu, LiveChart -->
                         </div>
                     </div>
@@ -377,12 +128,14 @@
         </div>
     </div>
 
-    <!-- FOOTER -->
+    <!-- LOADING OVERLAY -->
+    <div id="loadingOverlay" class="loading-overlay hidden">
+        <div class="spinner"></div>
+        <p id="loadingText">Loading calendar...</p>
+    </div>
+
     <footer class="app-footer">
-        <div class="footer-container">
-            <p>LiveChart Anime Tracker &bull; Zbudowane z wykorzystaniem <strong>.NET 8</strong>, <strong>Tenrai.Net (MyAnimeList)</strong>, <strong>AniList GraphQL</strong> i <strong>Kitsu API</strong>.</p>
-            <p class="footer-sub">Inspirowane interfejsem i funkcjonalnościami LiveChart.me &bull; Przygotowane dla <a href="https://github.com/wooles" target="_blank" rel="noopener">github.com/wooles</a></p>
-        </div>
+        <p>Monthly Anime Watching Calendar &bull; .NET 8 + Tenrai.Net + AniList + Kitsu &bull; Displaying in Local Time</p>
     </footer>
 
     <script src="/js/app.js"></script>

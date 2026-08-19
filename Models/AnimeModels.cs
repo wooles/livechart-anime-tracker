@@ -4,16 +4,7 @@ using System.Text.Json.Serialization;
 
 namespace LiveChartTracker.Models
 {
-    public class AiringEpisodeInfo
-    {
-        public int Episode { get; set; }
-        public DateTimeOffset AiringAt { get; set; }
-        public long TimeUntilAiringSeconds { get; set; }
-        public string DayOfWeek { get; set; } = string.Empty;
-        public string FormattedTime { get; set; } = string.Empty;
-    }
-
-    public class UnifiedAnimeEntry
+    public class CalendarMonthEpisode
     {
         public string Id { get; set; } = string.Empty;
         public int? MalId { get; set; }
@@ -31,77 +22,63 @@ namespace LiveChartTracker.Models
         public string CoverImage { get; set; } = string.Empty;
         public string? BannerImage { get; set; }
 
-        public string Format { get; set; } = "TV"; // TV, MOVIE, OVA, ONA, SPECIAL
-        public string Status { get; set; } = "RELEASING"; // RELEASING, NOT_YET_RELEASED, FINISHED, CANCELLED
-        public int? Episodes { get; set; }
+        public string Format { get; set; } = "TV";
+        public string Status { get; set; } = "RELEASING";
+        public int? TotalEpisodes { get; set; }
         public int? EpisodeDuration { get; set; } // minutes
 
-        public string? Season { get; set; } // WINTER, SPRING, SUMMER, FALL
-        public int? SeasonYear { get; set; }
-        public string? StartDate { get; set; }
+        public int EpisodeNumber { get; set; }
+        public DateTimeOffset AiringAt { get; set; }
+        public string AiringTimeFormatted { get; set; } = string.Empty; // "18:30"
+        public string AiringDateFormatted { get; set; } = string.Empty; // "2026-08-19"
+        public long TimeUntilAiringSeconds { get; set; }
 
-        public double? AverageScore { get; set; } // 0 - 100 or 0 - 10
-        public int? Popularity { get; set; }
-
+        public double? AverageScore { get; set; }
         public List<string> Genres { get; set; } = new();
         public List<string> Studios { get; set; } = new();
         public string Synopsis { get; set; } = string.Empty;
-        public string? Source { get; set; } // MANGA, LIGHT_NOVEL, ORIGINAL, etc.
+
         public string? SiteUrl { get; set; }
-        public string? LiveChartUrl { get; set; }
         public string? MalUrl { get; set; }
         public string? AniListUrl { get; set; }
         public string? KitsuUrl { get; set; }
 
-        public AiringEpisodeInfo? NextAiringEpisode { get; set; }
-
-        // User specific tracking information (if synced)
-        public string? UserStatus { get; set; } // WATCHING, PLANNING, COMPLETED, PAUSED, DROPPED
-        public int? UserProgress { get; set; } // Episodes watched
+        // User watch tracking
+        public int? UserProgress { get; set; } // e.g. watched 5
         public double? UserScore { get; set; }
-        public string? UserPlatform { get; set; } // AniList, Kitsu, MyAnimeList
     }
 
-    public class DaySchedule
+    public class CalendarDay
     {
-        public string Day { get; set; } = string.Empty; // Monday, Tuesday, etc.
-        public string DayPl { get; set; } = string.Empty; // Poniedziałek, Wtorek, etc.
-        public List<UnifiedAnimeEntry> AnimeList { get; set; } = new();
+        public string DateString { get; set; } = string.Empty; // YYYY-MM-DD
+        public int DayNumber { get; set; } // 1..31
+        public string DayOfWeek { get; set; } = string.Empty; // Monday, Tuesday...
+        public string DayOfWeekPl { get; set; } = string.Empty; // Poniedziałek...
+        public bool IsCurrentMonth { get; set; }
+        public bool IsToday { get; set; }
+        public List<CalendarMonthEpisode> Episodes { get; set; } = new();
     }
 
-    public class WeeklyScheduleResponse
+    public class MonthlyCalendarResponse
     {
-        public DateTimeOffset FetchedAt { get; set; } = DateTimeOffset.UtcNow;
-        public int TotalAnime { get; set; }
-        public List<DaySchedule> Schedule { get; set; } = new();
-    }
-
-    public class SeasonalAnimeResponse
-    {
-        public string Season { get; set; } = string.Empty;
         public int Year { get; set; }
-        public int TotalAnime { get; set; }
-        public List<UnifiedAnimeEntry> AnimeList { get; set; } = new();
+        public int Month { get; set; }
+        public string MonthName { get; set; } = string.Empty;
+        public string MonthNamePl { get; set; } = string.Empty;
+        public string Platform { get; set; } = string.Empty;
+        public string Username { get; set; } = string.Empty;
+        public string? AvatarUrl { get; set; }
+        public int TotalWatchingAnime { get; set; }
+        public int TotalEpisodesInMonth { get; set; }
+        public List<CalendarDay> Days { get; set; } = new();
     }
 
     public class UserAnimeListResponse
     {
-        public string Platform { get; set; } = string.Empty; // AniList, Kitsu, MyAnimeList
+        public string Platform { get; set; } = string.Empty;
         public string Username { get; set; } = string.Empty;
         public string? AvatarUrl { get; set; }
         public int TotalEntries { get; set; }
-        public List<UnifiedAnimeEntry> Watching { get; set; } = new();
-        public List<UnifiedAnimeEntry> Planning { get; set; } = new();
-        public List<UnifiedAnimeEntry> Completed { get; set; } = new();
-        public List<UnifiedAnimeEntry> Paused { get; set; } = new();
-        public List<UnifiedAnimeEntry> Dropped { get; set; } = new();
-    }
-
-    public class ExportCalendarRequest
-    {
-        public string? Platform { get; set; }
-        public string? Username { get; set; }
-        public bool OnlyWatching { get; set; } = true;
-        public int ReminderMinutesBefore { get; set; } = 15;
+        public List<CalendarMonthEpisode> Watching { get; set; } = new();
     }
 }

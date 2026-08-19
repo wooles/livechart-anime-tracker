@@ -12,9 +12,7 @@ namespace LiveChartTracker.Services
 {
     public interface IAniListService
     {
-        Task<UserAnimeListResponse> GetUserAnimeListAsync(string username);
-        Task<List<UnifiedAnimeEntry>> GetAiringScheduleAsync(DateTimeOffset start, DateTimeOffset end);
-        Task<List<UnifiedAnimeEntry>> GetSeasonalAnimeAsync(string season, int year);
+        Task<(string? avatarUrl, List<CalendarMonthEpisode> episodes, int totalWatching)> GetWatchingMonthEpisodesAsync(string username, int year, int month);
     }
 
     public class AniListService : IAniListService
@@ -31,9 +29,9 @@ namespace LiveChartTracker.Services
             }
         }
 
-        public async Task<UserAnimeListResponse> GetUserAnimeListAsync(string username)
+        public async Task<(string? avatarUrl, List<CalendarMonthEpisode> episodes, int totalWatching)> GetWatchingMonthEpisodesAsync(string username, int year, int month)
         {
-            const string query = @"
+            const string userQuery = @"
 query ($userName: String) {
   User(name: $userName) {
     name
@@ -41,11 +39,8 @@ query ($userName: String) {
       large
     }
   }
-  MediaListCollection(userName: $userName, type: ANIME) {
+  MediaListCollection(userName: $userName, type: ANIME, status: CURRENT) {
     lists {
-      name
-      isCustomList
-      status
       entries {
         status
         score
@@ -67,15 +62,12 @@ query ($userName: String) {
           status
           episodes
           duration
-          season
-          seasonYear
           startDate {
             year
             month
             day
           }
           averageScore
-          popularity
           genres
           studios(isMain: true) {
             nodes {
@@ -83,95 +75,68 @@ query ($userName: String) {
             }
           }
           description
-          source
           siteUrl
-          nextAiringEpisode {
-            airingAt
-            timeUntilAiring
-            episode
-          }
         }
       }
     }
   }
 }";
 
-            var response = await ExecuteGraphQLAsync(query, new { userName = username });
-            if (response == null || response["data"] == null)
+            var userRes = await ExecuteGraphQLAsync(userQuery, new { userName = username });
+            if (userRes == null || userRes["data"] == null || userRes["data"]?["User"] == null)
             {
-                throw new Exception($"Nie znaleziono użytkownika AniList o nazwie: {username}");
+                throw new Exception($"User {username} not found on AniList.");
             }
 
-            var userData = response["data"]?["User"];
-            var listData = response["data"]?["MediaListCollection"]?["lists"]?.AsArray();
+            var avatarUrl = userRes["data"]?["User"]?["avatar"]?["large"]?.ToString();
+            var lists = userRes["data"]?["MediaListCollection"]?["lists"]?.AsArray();
 
-            var result = new UserAnimeListResponse
-            {
-                Platform = "AniList",
-                Username = userData?["name"]?.ToString() ?? username,
-                AvatarUrl = userData?["avatar"]?["large"]?.ToString()
-            };
+            var watchingEntries = new Dictionary<int, (JsonNode media, int progress, double? score)>();
 
-            if (listData != null)
+            if (lists != null)
             {
-                foreach (var list in listData)
+                foreach (var l in lists)
                 {
-                    var entries = list?["entries"]?.AsArray();
+                    var entries = l?["entries"]?.AsArray();
                     if (entries == null) continue;
-
-                    foreach (var entry in entries)
+                    foreach (var e in entries)
                     {
-                        var media = entry?["media"];
-                        if (media == null) continue;
-
-                        var anime = MapAniListMedia(media);
-                        anime.UserPlatform = "AniList";
-                        anime.UserStatus = entry?["status"]?.ToString()?.ToUpperInvariant();
-                        anime.UserProgress = entry?["progress"]?.GetValue<int?>();
-                        anime.UserScore = entry?["score"]?.GetValue<double?>();
-
-                        switch (anime.UserStatus)
+                        var media = e?["media"];
+                        int? mediaId = media?["id"]?.GetValue<int?>();
+                        if (mediaId.HasValue && media != null && e != null)
                         {
-                            case "CURRENT":
-                                result.Watching.Add(anime);
-                                break;
-                            case "PLANNING":
-                                result.Planning.Add(anime);
-                                break;
-                            case "COMPLETED":
-                                result.Completed.Add(anime);
-                                break;
-                            case "PAUSED":
-                                result.Paused.Add(anime);
-                                break;
-                            case "DROPPED":
-                                result.Dropped.Add(anime);
-                                break;
-                            default:
-                                result.Watching.Add(anime);
-                                break;
+                            int progress = e["progress"]?.GetValue<int?>() ?? 0;
+                            double? score = e["score"]?.GetValue<double?>();
+                            watchingEntries[mediaId.Value] = (media, progress, score);
                         }
                     }
                 }
             }
 
-            result.TotalEntries = result.Watching.Count + result.Planning.Count + result.Completed.Count + result.Paused.Count + result.Dropped.Count;
-            return result;
-        }
+            int totalWatching = watchingEntries.Count;
+            if (totalWatching == 0)
+            {
+                return (avatarUrl, new List<CalendarMonthEpisode>(), 0);
+            }
 
-        public async Task<List<UnifiedAnimeEntry>> GetAiringScheduleAsync(DateTimeOffset start, DateTimeOffset end)
-        {
-            const string query = @"
-query ($page: Int, $perPage: Int, $airingAt_greater: Int, $airingAt_lesser: Int) {
+            var mediaIds = watchingEntries.Keys.ToList();
+
+            var startOfMonth = new DateTimeOffset(year, month, 1, 0, 0, 0, TimeSpan.Zero).AddDays(-1);
+            var endOfMonth = new DateTimeOffset(year, month, 1, 0, 0, 0, TimeSpan.Zero).AddMonths(1).AddDays(1);
+            long startSec = startOfMonth.ToUnixTimeSeconds();
+            long endSec = endOfMonth.ToUnixTimeSeconds();
+
+            const string scheduleQuery = @"
+query ($page: Int, $perPage: Int, $mediaId_in: [Int], $airingAt_greater: Int, $airingAt_lesser: Int) {
   Page(page: $page, perPage: $perPage) {
     pageInfo {
       hasNextPage
     }
-    airingSchedules(airingAt_greater: $airingAt_greater, airingAt_lesser: $airingAt_lesser, sort: TIME) {
+    airingSchedules(mediaId_in: $mediaId_in, airingAt_greater: $airingAt_greater, airingAt_lesser: $airingAt_lesser, sort: TIME) {
       id
+      episode
       airingAt
       timeUntilAiring
-      episode
       media {
         id
         idMal
@@ -189,15 +154,7 @@ query ($page: Int, $perPage: Int, $airingAt_greater: Int, $airingAt_lesser: Int)
         status
         episodes
         duration
-        season
-        seasonYear
-        startDate {
-          year
-          month
-          day
-        }
         averageScore
-        popularity
         genres
         studios(isMain: true) {
           nodes {
@@ -205,152 +162,109 @@ query ($page: Int, $perPage: Int, $airingAt_greater: Int, $airingAt_lesser: Int)
           }
         }
         description
-        source
         siteUrl
       }
     }
   }
 }";
 
-            var list = new List<UnifiedAnimeEntry>();
-            int page = 1;
-            bool hasNextPage = true;
-            long startSec = start.ToUnixTimeSeconds();
-            long endSec = end.ToUnixTimeSeconds();
-
-            while (hasNextPage && page <= 5) // fetch up to 250 airing shows
-            {
-                var response = await ExecuteGraphQLAsync(query, new
-                {
-                    page = page,
-                    perPage = 50,
-                    airingAt_greater = (int)startSec,
-                    airingAt_lesser = (int)endSec
-                });
-
-                var pageNode = response?["data"]?["Page"];
-                if (pageNode == null) break;
-
-                hasNextPage = pageNode["pageInfo"]?["hasNextPage"]?.GetValue<bool>() ?? false;
-                var schedules = pageNode["airingSchedules"]?.AsArray();
-                if (schedules != null)
-                {
-                    foreach (var sch in schedules)
-                    {
-                        var media = sch?["media"];
-                        if (media == null) continue;
-
-                        var anime = MapAniListMedia(media);
-                        long airingAtSec = sch?["airingAt"]?.GetValue<long>() ?? 0;
-                        long timeUntil = sch?["timeUntilAiring"]?.GetValue<long>() ?? 0;
-                        int ep = sch?["episode"]?.GetValue<int>() ?? 1;
-
-                        var airingAtTime = DateTimeOffset.FromUnixTimeSeconds(airingAtSec);
-                        anime.NextAiringEpisode = new AiringEpisodeInfo
-                        {
-                            Episode = ep,
-                            AiringAt = airingAtTime,
-                            TimeUntilAiringSeconds = timeUntil,
-                            DayOfWeek = airingAtTime.DayOfWeek.ToString(),
-                            FormattedTime = airingAtTime.ToLocalTime().ToString("HH:mm")
-                        };
-
-                        list.Add(anime);
-                    }
-                }
-
-                page++;
-            }
-
-            return list;
-        }
-
-        public async Task<List<UnifiedAnimeEntry>> GetSeasonalAnimeAsync(string season, int year)
-        {
-            const string query = @"
-query ($page: Int, $perPage: Int, $season: MediaSeason, $seasonYear: Int) {
-  Page(page: $page, perPage: $perPage) {
-    pageInfo {
-      hasNextPage
-    }
-    media(season: $season, seasonYear: $seasonYear, type: ANIME, sort: POPULARITY_DESC) {
-      id
-      idMal
-      title {
-        romaji
-        english
-        native
-      }
-      coverImage {
-        extraLarge
-        large
-      }
-      bannerImage
-      format
-      status
-      episodes
-      duration
-      season
-      seasonYear
-      startDate {
-        year
-        month
-        day
-      }
-      averageScore
-      popularity
-      genres
-      studios(isMain: true) {
-        nodes {
-          name
-        }
-      }
-      description
-      source
-      siteUrl
-      nextAiringEpisode {
-        airingAt
-        timeUntilAiring
-        episode
-      }
-    }
-  }
-}";
-
-            var list = new List<UnifiedAnimeEntry>();
+            var episodesList = new List<CalendarMonthEpisode>();
             int page = 1;
             bool hasNextPage = true;
 
-            while (hasNextPage && page <= 3) // Top 150 seasonal shows
+            var idChunks = mediaIds.Chunk(50).ToList();
+
+            foreach (var chunk in idChunks)
             {
-                var response = await ExecuteGraphQLAsync(query, new
-                {
-                    page = page,
-                    perPage = 50,
-                    season = season.ToUpperInvariant(),
-                    seasonYear = year
-                });
+                page = 1;
+                hasNextPage = true;
 
-                var pageNode = response?["data"]?["Page"];
-                if (pageNode == null) break;
-
-                hasNextPage = pageNode["pageInfo"]?["hasNextPage"]?.GetValue<bool>() ?? false;
-                var mediaArray = pageNode["media"]?.AsArray();
-                if (mediaArray != null)
+                while (hasNextPage && page <= 5)
                 {
-                    foreach (var media in mediaArray)
+                    var schedRes = await ExecuteGraphQLAsync(scheduleQuery, new
                     {
-                        if (media != null)
+                        page = page,
+                        perPage = 50,
+                        mediaId_in = chunk,
+                        airingAt_greater = (int)startSec,
+                        airingAt_lesser = (int)endSec
+                    });
+
+                    var pageNode = schedRes?["data"]?["Page"];
+                    if (pageNode == null) break;
+
+                    hasNextPage = pageNode["pageInfo"]?["hasNextPage"]?.GetValue<bool>() ?? false;
+                    var schedules = pageNode["airingSchedules"]?.AsArray();
+                    if (schedules != null)
+                    {
+                        foreach (var sch in schedules)
                         {
-                            list.Add(MapAniListMedia(media));
+                            var media = sch?["media"];
+                            if (media == null) continue;
+
+                            int mediaId = media["id"]?.GetValue<int>() ?? 0;
+                            watchingEntries.TryGetValue(mediaId, out var userEntry);
+
+                            long airSec = sch?["airingAt"]?.GetValue<long>() ?? 0;
+                            long timeUntil = sch?["timeUntilAiring"]?.GetValue<long>() ?? 0;
+                            int epNum = sch?["episode"]?.GetValue<int>() ?? 1;
+
+                            // Store in UTC so client browser converts to exact local timezone
+                            var airUtc = DateTimeOffset.FromUnixTimeSeconds(airSec).ToUniversalTime();
+
+                            var ep = new CalendarMonthEpisode
+                            {
+                                Id = "anilist_" + mediaId + "_ep" + epNum,
+                                AniListId = mediaId,
+                                MalId = media["idMal"]?.GetValue<int?>(),
+                                TitleRomaji = media["title"]?["romaji"]?.ToString() ?? "",
+                                TitleEnglish = media["title"]?["english"]?.ToString() ?? "",
+                                TitleNative = media["title"]?["native"]?.ToString() ?? "",
+                                CoverImage = media["coverImage"]?["extraLarge"]?.ToString() ?? media["coverImage"]?["large"]?.ToString() ?? "",
+                                BannerImage = media["bannerImage"]?.ToString(),
+                                Format = media["format"]?.ToString() ?? "TV",
+                                Status = media["status"]?.ToString() ?? "RELEASING",
+                                TotalEpisodes = media["episodes"]?.GetValue<int?>(),
+                                EpisodeDuration = media["duration"]?.GetValue<int?>(),
+                                EpisodeNumber = epNum,
+                                AiringAt = airUtc,
+                                AiringTimeFormatted = airUtc.ToString("HH:mm"),
+                                AiringDateFormatted = airUtc.ToString("yyyy-MM-dd"),
+                                TimeUntilAiringSeconds = timeUntil,
+                                AverageScore = media["averageScore"]?.GetValue<double?>(),
+                                Synopsis = media["description"]?.ToString() ?? "",
+                                SiteUrl = media["siteUrl"]?.ToString(),
+                                AniListUrl = media["siteUrl"]?.ToString(),
+                                UserProgress = userEntry.progress,
+                                UserScore = userEntry.score
+                            };
+
+                            if (ep.MalId.HasValue)
+                            {
+                                ep.MalUrl = $"https://myanimelist.net/anime/{ep.MalId.Value}";
+                            }
+
+                            var genres = media["genres"]?.AsArray();
+                            if (genres != null)
+                            {
+                                ep.Genres = genres.Select(g => g?.ToString() ?? "").Where(g => !string.IsNullOrEmpty(g)).ToList();
+                            }
+
+                            var studios = media["studios"]?["nodes"]?.AsArray();
+                            if (studios != null)
+                            {
+                                ep.Studios = studios.Select(s => s?["name"]?.ToString() ?? "").Where(s => !string.IsNullOrEmpty(s)).ToList();
+                            }
+
+                            episodesList.Add(ep);
                         }
                     }
-                }
 
-                page++;
+                    page++;
+                }
             }
 
-            return list;
+            return (avatarUrl, episodesList, totalWatching);
         }
 
         private async Task<JsonNode?> ExecuteGraphQLAsync(string query, object variables)
@@ -367,81 +281,6 @@ query ($page: Int, $perPage: Int, $season: MediaSeason, $seasonYear: Int) {
 
             var jsonString = await response.Content.ReadAsStringAsync();
             return JsonNode.Parse(jsonString);
-        }
-
-        private static UnifiedAnimeEntry MapAniListMedia(JsonNode media)
-        {
-            var anime = new UnifiedAnimeEntry
-            {
-                Id = "anilist_" + media["id"]?.ToString(),
-                AniListId = media["id"]?.GetValue<int?>(),
-                MalId = media["idMal"]?.GetValue<int?>(),
-                TitleRomaji = media["title"]?["romaji"]?.ToString() ?? "",
-                TitleEnglish = media["title"]?["english"]?.ToString() ?? "",
-                TitleNative = media["title"]?["native"]?.ToString() ?? "",
-                CoverImage = media["coverImage"]?["extraLarge"]?.ToString() ?? media["coverImage"]?["large"]?.ToString() ?? "",
-                BannerImage = media["bannerImage"]?.ToString(),
-                Format = media["format"]?.ToString() ?? "TV",
-                Status = media["status"]?.ToString() ?? "RELEASING",
-                Episodes = media["episodes"]?.GetValue<int?>(),
-                EpisodeDuration = media["duration"]?.GetValue<int?>(),
-                Season = media["season"]?.ToString(),
-                SeasonYear = media["seasonYear"]?.GetValue<int?>(),
-                AverageScore = media["averageScore"]?.GetValue<double?>(),
-                Popularity = media["popularity"]?.GetValue<int?>(),
-                Synopsis = media["description"]?.ToString() ?? "",
-                Source = media["source"]?.ToString(),
-                SiteUrl = media["siteUrl"]?.ToString(),
-                AniListUrl = media["siteUrl"]?.ToString()
-            };
-
-            if (anime.MalId.HasValue)
-            {
-                anime.MalUrl = $"https://myanimelist.net/anime/{anime.MalId.Value}";
-            }
-
-            var startYear = media["startDate"]?["year"]?.GetValue<int?>();
-            var startMonth = media["startDate"]?["month"]?.GetValue<int?>();
-            var startDay = media["startDate"]?["day"]?.GetValue<int?>();
-            if (startYear.HasValue)
-            {
-                anime.StartDate = $"{startYear.Value:D4}-{(startMonth ?? 1):D2}-{(startDay ?? 1):D2}";
-            }
-
-            var genres = media["genres"]?.AsArray();
-            if (genres != null)
-            {
-                anime.Genres = genres.Select(g => g?.ToString() ?? "").Where(g => !string.IsNullOrEmpty(g)).ToList();
-            }
-
-            var studios = media["studios"]?["nodes"]?.AsArray();
-            if (studios != null)
-            {
-                anime.Studios = studios.Select(s => s?["name"]?.ToString() ?? "").Where(s => !string.IsNullOrEmpty(s)).ToList();
-            }
-
-            var nextEp = media["nextAiringEpisode"];
-            if (nextEp != null)
-            {
-                long airingAtSec = nextEp["airingAt"]?.GetValue<long>() ?? 0;
-                long timeUntil = nextEp["timeUntilAiring"]?.GetValue<long>() ?? 0;
-                int ep = nextEp["episode"]?.GetValue<int>() ?? 1;
-
-                if (airingAtSec > 0)
-                {
-                    var airingAtTime = DateTimeOffset.FromUnixTimeSeconds(airingAtSec);
-                    anime.NextAiringEpisode = new AiringEpisodeInfo
-                    {
-                        Episode = ep,
-                        AiringAt = airingAtTime,
-                        TimeUntilAiringSeconds = timeUntil,
-                        DayOfWeek = airingAtTime.DayOfWeek.ToString(),
-                        FormattedTime = airingAtTime.ToLocalTime().ToString("HH:mm")
-                    };
-                }
-            }
-
-            return anime;
         }
     }
 }

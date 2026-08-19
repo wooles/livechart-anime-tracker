@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using LiveChartTracker.Models;
@@ -9,10 +10,8 @@ namespace LiveChartTracker.Services
 {
     public interface IAnimeAggregationService
     {
-        Task<WeeklyScheduleResponse> GetWeeklyScheduleAsync(string? userPlatform = null, string? username = null);
-        Task<SeasonalAnimeResponse> GetSeasonalAnimeAsync(string season, int year, string? userPlatform = null, string? username = null);
-        Task<UserAnimeListResponse> GetUserAnimeListAsync(string platform, string username);
-        Task<string> ExportUserCalendarIcsAsync(string platform, string username, bool onlyWatching = true, int reminderMinutes = 15);
+        Task<MonthlyCalendarResponse> GetMonthlyCalendarAsync(string platform, string username, int year, int month);
+        Task<string> ExportCalendarIcsAsync(string platform, string username, int year, int month, int reminderMinutes = 15);
     }
 
     public class AnimeAggregationService : IAnimeAggregationService
@@ -22,10 +21,18 @@ namespace LiveChartTracker.Services
         private readonly IMyAnimeListTenraiService _malTenraiService;
         private readonly ICalendarExportService _calendarExportService;
 
-        // In-memory cache for schedule to be snappy
-        private static WeeklyScheduleResponse? _cachedSchedule;
-        private static DateTimeOffset _cacheExpiry = DateTimeOffset.MinValue;
-        private static readonly ConcurrentDictionary<string, UserAnimeListResponse> _userCache = new();
+        private static readonly ConcurrentDictionary<string, (DateTimeOffset cachedAt, MonthlyCalendarResponse data)> _cache = new();
+
+        private static readonly string[] MonthNamesPl = new[]
+        {
+            "", "Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec",
+            "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"
+        };
+
+        private static readonly string[] DayNamesPl = new[]
+        {
+            "Niedziela", "Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek", "Sobota"
+        };
 
         public AnimeAggregationService(
             IAniListService aniListService,
@@ -39,266 +46,138 @@ namespace LiveChartTracker.Services
             _calendarExportService = calendarExportService;
         }
 
-        public async Task<WeeklyScheduleResponse> GetWeeklyScheduleAsync(string? userPlatform = null, string? username = null)
+        public async Task<MonthlyCalendarResponse> GetMonthlyCalendarAsync(string platform, string username, int year, int month)
         {
-            // 1. Fetch base schedule
-            WeeklyScheduleResponse baseSchedule;
-            if (_cachedSchedule != null && DateTimeOffset.UtcNow < _cacheExpiry)
+            var cacheKey = $"{platform.ToLowerInvariant()}_{username.ToLowerInvariant()}_{year}_{month}";
+            if (_cache.TryGetValue(cacheKey, out var cached) && DateTimeOffset.UtcNow - cached.cachedAt < TimeSpan.FromMinutes(10))
             {
-                baseSchedule = _cachedSchedule;
-            }
-            else
-            {
-                baseSchedule = await FetchFreshWeeklyScheduleAsync();
-                _cachedSchedule = baseSchedule;
-                _cacheExpiry = DateTimeOffset.UtcNow.AddMinutes(15);
+                return cached.data;
             }
 
-            // If user sync is requested, filter and annotate
-            if (!string.IsNullOrWhiteSpace(userPlatform) && !string.IsNullOrWhiteSpace(username))
+            // 1. Fetch Watching Episodes from selected platform
+            string? avatarUrl;
+            List<CalendarMonthEpisode> episodes;
+            int totalWatching;
+
+            switch (platform.ToLowerInvariant())
             {
-                var userList = await GetUserAnimeListAsync(userPlatform, username);
-                return ApplyUserFilterToSchedule(baseSchedule, userList);
+                case "anilist":
+                    (avatarUrl, episodes, totalWatching) = await _aniListService.GetWatchingMonthEpisodesAsync(username, year, month);
+                    break;
+                case "kitsu":
+                    (avatarUrl, episodes, totalWatching) = await _kitsuService.GetWatchingMonthEpisodesAsync(username, year, month);
+                    break;
+                case "myanimelist":
+                case "mal":
+                    (avatarUrl, episodes, totalWatching) = await _malTenraiService.GetWatchingMonthEpisodesAsync(username, year, month);
+                    break;
+                default:
+                    throw new ArgumentException($"Nieobsługiwana platforma: {platform}. Dostępne: AniList, Kitsu, MyAnimeList");
             }
 
-            return baseSchedule;
-        }
+            // Group episodes by Date (YYYY-MM-DD)
+            var episodesByDate = episodes
+                .GroupBy(e => e.AiringDateFormatted)
+                .ToDictionary(g => g.Key, g => g.OrderBy(e => e.AiringAt).ToList());
 
-        public async Task<SeasonalAnimeResponse> GetSeasonalAnimeAsync(string season, int year, string? userPlatform = null, string? username = null)
-        {
-            var animeList = await _aniListService.GetSeasonalAnimeAsync(season, year);
+            // 2. Build 7-column Calendar Matrix (starting on Monday)
+            var daysList = new List<CalendarDay>();
+            var todayStr = DateTime.UtcNow.ToString("yyyy-MM-dd");
 
-            if (!string.IsNullOrWhiteSpace(userPlatform) && !string.IsNullOrWhiteSpace(username))
+            var firstDayOfMonth = new DateTime(year, month, 1);
+            int daysInMonth = DateTime.DaysInMonth(year, month);
+            var lastDayOfMonth = new DateTime(year, month, daysInMonth);
+
+            // In .NET: Sunday = 0, Monday = 1, Tuesday = 2 ... Saturday = 6
+            // We want Monday = 1, Sunday = 7
+            int firstDayOfWeekNum = ((int)firstDayOfMonth.DayOfWeek == 0) ? 7 : (int)firstDayOfMonth.DayOfWeek;
+            int prevMonthPadding = firstDayOfWeekNum - 1; // days to prepend from previous month
+
+            // Prepend previous month days
+            if (prevMonthPadding > 0)
             {
-                var userList = await GetUserAnimeListAsync(userPlatform, username);
-                var allUserAnime = userList.Watching
-                    .Concat(userList.Planning)
-                    .Concat(userList.Completed)
-                    .Concat(userList.Paused)
-                    .Concat(userList.Dropped)
-                    .ToList();
-
-                foreach (var anime in animeList)
+                var prevMonthDate = firstDayOfMonth.AddDays(-prevMonthPadding);
+                for (int i = 0; i < prevMonthPadding; i++)
                 {
-                    var match = FindUserAnimeMatch(anime, allUserAnime);
-                    if (match != null)
+                    var d = prevMonthDate.AddDays(i);
+                    var dStr = d.ToString("yyyy-MM-dd");
+                    daysList.Add(new CalendarDay
                     {
-                        anime.UserStatus = match.UserStatus;
-                        anime.UserProgress = match.UserProgress;
-                        anime.UserScore = match.UserScore;
-                        anime.UserPlatform = match.UserPlatform;
-                    }
+                        DateString = dStr,
+                        DayNumber = d.Day,
+                        DayOfWeek = d.DayOfWeek.ToString(),
+                        DayOfWeekPl = DayNamesPl[(int)d.DayOfWeek],
+                        IsCurrentMonth = false,
+                        IsToday = (dStr == todayStr),
+                        Episodes = episodesByDate.TryGetValue(dStr, out var eps) ? eps : new List<CalendarMonthEpisode>()
+                    });
                 }
             }
 
-            return new SeasonalAnimeResponse
+            // Current month days
+            for (int day = 1; day <= daysInMonth; day++)
             {
-                Season = season,
-                Year = year,
-                TotalAnime = animeList.Count,
-                AnimeList = animeList
-            };
-        }
-
-        public async Task<UserAnimeListResponse> GetUserAnimeListAsync(string platform, string username)
-        {
-            var cacheKey = $"{platform.ToLowerInvariant()}_{username.ToLowerInvariant()}";
-            if (_userCache.TryGetValue(cacheKey, out var cached))
-            {
-                return cached;
-            }
-
-            UserAnimeListResponse response = platform.ToLowerInvariant() switch
-            {
-                "anilist" => await _aniListService.GetUserAnimeListAsync(username),
-                "kitsu" => await _kitsuService.GetUserAnimeListAsync(username),
-                "myanimelist" or "mal" => await _malTenraiService.GetUserAnimeListAsync(username),
-                _ => throw new ArgumentException($"Nieznana platforma: {platform}. Dostępne: anilist, kitsu, myanimelist")
-            };
-
-            // Enrich user list with live next airing episodes from AniList schedule if available
-            var schedule = await GetWeeklyScheduleAsync();
-            var allScheduleAnime = schedule.Schedule.SelectMany(s => s.AnimeList).ToList();
-
-            foreach (var uAnime in response.Watching.Concat(response.Planning))
-            {
-                var match = FindUserAnimeMatch(uAnime, allScheduleAnime);
-                if (match?.NextAiringEpisode != null)
+                var d = new DateTime(year, month, day);
+                var dStr = d.ToString("yyyy-MM-dd");
+                daysList.Add(new CalendarDay
                 {
-                    uAnime.NextAiringEpisode = match.NextAiringEpisode;
-                }
+                    DateString = dStr,
+                    DayNumber = day,
+                    DayOfWeek = d.DayOfWeek.ToString(),
+                    DayOfWeekPl = DayNamesPl[(int)d.DayOfWeek],
+                    IsCurrentMonth = true,
+                    IsToday = (dStr == todayStr),
+                    Episodes = episodesByDate.TryGetValue(dStr, out var eps) ? eps : new List<CalendarMonthEpisode>()
+                });
             }
 
-            _userCache[cacheKey] = response;
+            // Append next month days to complete rows (multiples of 7: 35 or 42 cells)
+            int totalGridCells = daysList.Count <= 35 ? 35 : 42;
+            int nextMonthPadding = totalGridCells - daysList.Count;
+
+            for (int i = 1; i <= nextMonthPadding; i++)
+            {
+                var d = lastDayOfMonth.AddDays(i);
+                var dStr = d.ToString("yyyy-MM-dd");
+                daysList.Add(new CalendarDay
+                {
+                    DateString = dStr,
+                    DayNumber = d.Day,
+                    DayOfWeek = d.DayOfWeek.ToString(),
+                    DayOfWeekPl = DayNamesPl[(int)d.DayOfWeek],
+                    IsCurrentMonth = false,
+                    IsToday = (dStr == todayStr),
+                    Episodes = episodesByDate.TryGetValue(dStr, out var eps) ? eps : new List<CalendarMonthEpisode>()
+                });
+            }
+
+            var response = new MonthlyCalendarResponse
+            {
+                Year = year,
+                Month = month,
+                MonthName = CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(month),
+                MonthNamePl = MonthNamesPl[month],
+                Platform = platform,
+                Username = username,
+                AvatarUrl = avatarUrl,
+                TotalWatchingAnime = totalWatching,
+                TotalEpisodesInMonth = episodes.Count,
+                Days = daysList
+            };
+
+            _cache[cacheKey] = (DateTimeOffset.UtcNow, response);
             return response;
         }
 
-        public async Task<string> ExportUserCalendarIcsAsync(string platform, string username, bool onlyWatching = true, int reminderMinutes = 15)
+        public async Task<string> ExportCalendarIcsAsync(string platform, string username, int year, int month, int reminderMinutes = 15)
         {
-            var userList = await GetUserAnimeListAsync(platform, username);
-            var exportAnime = onlyWatching ? userList.Watching : userList.Watching.Concat(userList.Planning).ToList();
+            var calendar = await GetMonthlyCalendarAsync(platform, username, year, month);
+            var allEpisodes = calendar.Days.SelectMany(d => d.Episodes).ToList();
 
             return _calendarExportService.GenerateIcsCalendar(
-                exportAnime,
-                $"Harmonogram Anime - {username} ({platform})",
+                allEpisodes,
+                $"Harmonogram Oglądanych Anime - {username} ({calendar.MonthNamePl} {year})",
                 reminderMinutes);
-        }
-
-        private async Task<WeeklyScheduleResponse> FetchFreshWeeklyScheduleAsync()
-        {
-            var now = DateTimeOffset.UtcNow;
-            var startOfWeek = now.AddDays(-1); // include yesterday to cover all timezones
-            var endOfWeek = now.AddDays(7);
-
-            var animeList = await _aniListService.GetAiringScheduleAsync(startOfWeek, endOfWeek);
-
-            // Group by Day of Week
-            var daysOrder = new[]
-            {
-                ("Monday", "Poniedziałek"),
-                ("Tuesday", "Wtorek"),
-                ("Wednesday", "Środa"),
-                ("Thursday", "Czwartek"),
-                ("Friday", "Piątek"),
-                ("Saturday", "Sobota"),
-                ("Sunday", "Niedziela")
-            };
-
-            var daySchedules = new List<DaySchedule>();
-
-            foreach (var (dayEng, dayPl) in daysOrder)
-            {
-                var dayAnime = animeList
-                    .Where(a => a.NextAiringEpisode != null && a.NextAiringEpisode.AiringAt.ToLocalTime().DayOfWeek.ToString().Equals(dayEng, StringComparison.OrdinalIgnoreCase))
-                    .OrderBy(a => a.NextAiringEpisode!.AiringAt)
-                    .GroupBy(a => a.DisplayTitle) // remove duplicates if multiple episodes in same week
-                    .Select(g => g.First())
-                    .ToList();
-
-                daySchedules.Add(new DaySchedule
-                {
-                    Day = dayEng,
-                    DayPl = dayPl,
-                    AnimeList = dayAnime
-                });
-            }
-
-            return new WeeklyScheduleResponse
-            {
-                FetchedAt = now,
-                TotalAnime = daySchedules.Sum(d => d.AnimeList.Count),
-                Schedule = daySchedules
-            };
-        }
-
-        private static WeeklyScheduleResponse ApplyUserFilterToSchedule(WeeklyScheduleResponse baseSchedule, UserAnimeListResponse userList)
-        {
-            var userAnimeMap = userList.Watching.Concat(userList.Planning).ToList();
-
-            var filteredDays = new List<DaySchedule>();
-            foreach (var day in baseSchedule.Schedule)
-            {
-                var matchedInDay = new List<UnifiedAnimeEntry>();
-                foreach (var anime in day.AnimeList)
-                {
-                    var match = FindUserAnimeMatch(anime, userAnimeMap);
-                    if (match != null)
-                    {
-                        var clone = CloneAnime(anime);
-                        clone.UserStatus = match.UserStatus;
-                        clone.UserProgress = match.UserProgress;
-                        clone.UserScore = match.UserScore;
-                        clone.UserPlatform = match.UserPlatform;
-                        matchedInDay.Add(clone);
-                    }
-                }
-
-                filteredDays.Add(new DaySchedule
-                {
-                    Day = day.Day,
-                    DayPl = day.DayPl,
-                    AnimeList = matchedInDay
-                });
-            }
-
-            return new WeeklyScheduleResponse
-            {
-                FetchedAt = baseSchedule.FetchedAt,
-                TotalAnime = filteredDays.Sum(d => d.AnimeList.Count),
-                Schedule = filteredDays
-            };
-        }
-
-        private static UnifiedAnimeEntry? FindUserAnimeMatch(UnifiedAnimeEntry target, List<UnifiedAnimeEntry> candidates)
-        {
-            // 1. Match by AniListId
-            if (target.AniListId.HasValue)
-            {
-                var match = candidates.FirstOrDefault(c => c.AniListId.HasValue && c.AniListId.Value == target.AniListId.Value);
-                if (match != null) return match;
-            }
-
-            // 2. Match by MalId
-            if (target.MalId.HasValue)
-            {
-                var match = candidates.FirstOrDefault(c => c.MalId.HasValue && c.MalId.Value == target.MalId.Value);
-                if (match != null) return match;
-            }
-
-            // 3. Match by KitsuId
-            if (!string.IsNullOrEmpty(target.KitsuId))
-            {
-                var match = candidates.FirstOrDefault(c => c.KitsuId == target.KitsuId);
-                if (match != null) return match;
-            }
-
-            // 4. Fuzzy title match
-            var targetTitleNorm = NormalizeTitle(target.DisplayTitle);
-            return candidates.FirstOrDefault(c =>
-                NormalizeTitle(c.DisplayTitle) == targetTitleNorm ||
-                NormalizeTitle(c.TitleRomaji) == targetTitleNorm ||
-                NormalizeTitle(c.TitleEnglish) == targetTitleNorm);
-        }
-
-        private static string NormalizeTitle(string title)
-        {
-            if (string.IsNullOrWhiteSpace(title)) return string.Empty;
-            return new string(title.ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
-        }
-
-        private static UnifiedAnimeEntry CloneAnime(UnifiedAnimeEntry a)
-        {
-            return new UnifiedAnimeEntry
-            {
-                Id = a.Id,
-                MalId = a.MalId,
-                AniListId = a.AniListId,
-                KitsuId = a.KitsuId,
-                TitleRomaji = a.TitleRomaji,
-                TitleEnglish = a.TitleEnglish,
-                TitleNative = a.TitleNative,
-                CoverImage = a.CoverImage,
-                BannerImage = a.BannerImage,
-                Format = a.Format,
-                Status = a.Status,
-                Episodes = a.Episodes,
-                EpisodeDuration = a.EpisodeDuration,
-                Season = a.Season,
-                SeasonYear = a.SeasonYear,
-                StartDate = a.StartDate,
-                AverageScore = a.AverageScore,
-                Popularity = a.Popularity,
-                Genres = new List<string>(a.Genres),
-                Studios = new List<string>(a.Studios),
-                Synopsis = a.Synopsis,
-                Source = a.Source,
-                SiteUrl = a.SiteUrl,
-                LiveChartUrl = a.LiveChartUrl,
-                MalUrl = a.MalUrl,
-                AniListUrl = a.AniListUrl,
-                KitsuUrl = a.KitsuUrl,
-                NextAiringEpisode = a.NextAiringEpisode
-            };
         }
     }
 }

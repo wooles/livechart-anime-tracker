@@ -11,7 +11,7 @@ namespace LiveChartTracker.Services
 {
     public interface IKitsuService
     {
-        Task<UserAnimeListResponse> GetUserAnimeListAsync(string username);
+        Task<(string? avatarUrl, List<CalendarMonthEpisode> episodes, int totalWatching)> GetWatchingMonthEpisodesAsync(string username, int year, int month);
     }
 
     public class KitsuService : IKitsuService
@@ -32,9 +32,8 @@ namespace LiveChartTracker.Services
             }
         }
 
-        public async Task<UserAnimeListResponse> GetUserAnimeListAsync(string username)
+        public async Task<(string? avatarUrl, List<CalendarMonthEpisode> episodes, int totalWatching)> GetWatchingMonthEpisodesAsync(string username, int year, int month)
         {
-            // 1. Fetch User ID
             var userUrl = $"{KitsuBaseUrl}/users?filter[name]={Uri.EscapeDataString(username)}";
             var userRes = await _httpClient.GetAsync(userUrl);
             userRes.EnsureSuccessStatusCode();
@@ -43,137 +42,132 @@ namespace LiveChartTracker.Services
             var users = userJson?["data"]?.AsArray();
             if (users == null || users.Count == 0)
             {
-                throw new Exception($"Nie znaleziono użytkownika Kitsu o nazwie: {username}");
+                throw new Exception($"User {username} not found on Kitsu.");
             }
 
             var userNode = users[0];
             var userId = userNode?["id"]?.ToString();
-            var userName = userNode?["attributes"]?["name"]?.ToString() ?? username;
             var avatarUrl = userNode?["attributes"]?["avatar"]?["large"]?.ToString() 
                 ?? userNode?["attributes"]?["avatar"]?["original"]?.ToString();
 
-            var result = new UserAnimeListResponse
+            var libraryUrl = $"{KitsuBaseUrl}/library-entries?filter[userId]={userId}&filter[kind]=anime&filter[status]=current&include=anime&page[limit]=100";
+            var libRes = await _httpClient.GetAsync(libraryUrl);
+            if (!libRes.IsSuccessStatusCode)
             {
-                Platform = "Kitsu",
-                Username = userName,
-                AvatarUrl = avatarUrl
-            };
+                return (avatarUrl, new List<CalendarMonthEpisode>(), 0);
+            }
 
-            // 2. Fetch Library Entries (paginated)
-            int offset = 0;
-            const int limit = 100;
-            bool hasMore = true;
+            var libJson = JsonNode.Parse(await libRes.Content.ReadAsStringAsync());
+            var entries = libJson?["data"]?.AsArray();
+            var included = libJson?["included"]?.AsArray();
 
-            while (hasMore && offset < 500)
+            if (entries == null || entries.Count == 0)
             {
-                var libraryUrl = $"{KitsuBaseUrl}/library-entries?filter[userId]={userId}&filter[kind]=anime&include=anime&page[limit]={limit}&page[offset]={offset}&sort=-updated_at";
-                var libRes = await _httpClient.GetAsync(libraryUrl);
-                if (!libRes.IsSuccessStatusCode) break;
+                return (avatarUrl, new List<CalendarMonthEpisode>(), 0);
+            }
 
-                var libJson = JsonNode.Parse(await libRes.Content.ReadAsStringAsync());
-                var entries = libJson?["data"]?.AsArray();
-                var included = libJson?["included"]?.AsArray();
-
-                if (entries == null || entries.Count == 0) break;
-
-                // Map included anime dictionary by ID
-                var animeDict = new Dictionary<string, JsonNode>();
-                if (included != null)
+            var animeDict = new Dictionary<string, JsonNode>();
+            if (included != null)
+            {
+                foreach (var inc in included)
                 {
-                    foreach (var inc in included)
+                    var incType = inc?["type"]?.ToString();
+                    var incId = inc?["id"]?.ToString();
+                    if (incType == "anime" && incId != null && inc != null)
                     {
-                        var incType = inc?["type"]?.ToString();
-                        var incId = inc?["id"]?.ToString();
-                        if (incType == "anime" && incId != null && inc != null)
-                        {
-                            animeDict[incId] = inc;
-                        }
+                        animeDict[incId] = inc;
                     }
-                }
-
-                foreach (var entry in entries)
-                {
-                    var entryAttr = entry?["attributes"];
-                    if (entryAttr == null) continue;
-
-                    var animeRelId = entry?["relationships"]?["anime"]?["data"]?["id"]?.ToString();
-                    if (animeRelId == null || !animeDict.TryGetValue(animeRelId, out var animeNode))
-                    {
-                        continue;
-                    }
-
-                    var animeAttr = animeNode["attributes"];
-                    if (animeAttr == null) continue;
-
-                    var status = entryAttr["status"]?.ToString()?.ToLowerInvariant();
-                    var progress = entryAttr["progress"]?.GetValue<int?>();
-                    var ratingTwenty = entryAttr["ratingTwenty"]?.GetValue<double?>();
-
-                    var anime = new UnifiedAnimeEntry
-                    {
-                        Id = "kitsu_" + animeRelId,
-                        KitsuId = animeRelId,
-                        TitleRomaji = animeAttr["canonicalTitle"]?.ToString() ?? "",
-                        TitleEnglish = animeAttr["titles"]?["en"]?.ToString() ?? animeAttr["titles"]?["en_jp"]?.ToString() ?? "",
-                        TitleNative = animeAttr["titles"]?["ja_jp"]?.ToString() ?? "",
-                        CoverImage = animeAttr["posterImage"]?["large"]?.ToString() ?? animeAttr["posterImage"]?["medium"]?.ToString() ?? "",
-                        BannerImage = animeAttr["coverImage"]?["large"]?.ToString(),
-                        Format = (animeAttr["showType"]?.ToString() ?? "TV").ToUpperInvariant(),
-                        Status = (animeAttr["status"]?.ToString() ?? "current").ToUpperInvariant(),
-                        Episodes = animeAttr["episodeCount"]?.GetValue<int?>(),
-                        EpisodeDuration = animeAttr["episodeLength"]?.GetValue<int?>(),
-                        AverageScore = animeAttr["averageRating"] != null ? double.TryParse(animeAttr["averageRating"]?.ToString(), out var r) ? r : null : null,
-                        Popularity = animeAttr["userCount"]?.GetValue<int?>(),
-                        Synopsis = animeAttr["synopsis"]?.ToString() ?? "",
-                        StartDate = animeAttr["startDate"]?.ToString(),
-                        SiteUrl = $"https://kitsu.app/anime/{animeAttr["slug"]?.ToString() ?? animeRelId}",
-                        KitsuUrl = $"https://kitsu.app/anime/{animeAttr["slug"]?.ToString() ?? animeRelId}",
-                        UserPlatform = "Kitsu",
-                        UserProgress = progress,
-                        UserScore = ratingTwenty.HasValue ? ratingTwenty.Value * 5.0 : null // convert 20-scale to 100
-                    };
-
-                    switch (status)
-                    {
-                        case "current":
-                            anime.UserStatus = "CURRENT";
-                            result.Watching.Add(anime);
-                            break;
-                        case "planned":
-                            anime.UserStatus = "PLANNING";
-                            result.Planning.Add(anime);
-                            break;
-                        case "completed":
-                            anime.UserStatus = "COMPLETED";
-                            result.Completed.Add(anime);
-                            break;
-                        case "on_hold":
-                            anime.UserStatus = "PAUSED";
-                            result.Paused.Add(anime);
-                            break;
-                        case "dropped":
-                            anime.UserStatus = "DROPPED";
-                            result.Dropped.Add(anime);
-                            break;
-                        default:
-                            anime.UserStatus = "CURRENT";
-                            result.Watching.Add(anime);
-                            break;
-                    }
-                }
-
-                if (entries.Count < limit)
-                {
-                    hasMore = false;
-                }
-                else
-                {
-                    offset += limit;
                 }
             }
 
-            result.TotalEntries = result.Watching.Count + result.Planning.Count + result.Completed.Count + result.Paused.Count + result.Dropped.Count;
-            return result;
+            var episodes = new List<CalendarMonthEpisode>();
+            int daysInMonth = DateTime.DaysInMonth(year, month);
+            var monthStart = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
+            var monthEnd = new DateTime(year, month, daysInMonth, 23, 59, 59, DateTimeKind.Utc);
+
+            int totalWatching = entries.Count;
+
+            foreach (var entry in entries)
+            {
+                var entryAttr = entry?["attributes"];
+                if (entryAttr == null) continue;
+
+                var animeRelId = entry?["relationships"]?["anime"]?["data"]?["id"]?.ToString();
+                if (animeRelId == null || !animeDict.TryGetValue(animeRelId, out var animeNode))
+                {
+                    continue;
+                }
+
+                var animeAttr = animeNode["attributes"];
+                if (animeAttr == null) continue;
+
+                string animeStatus = animeAttr["status"]?.ToString()?.ToLowerInvariant() ?? "current";
+                string startStr = animeAttr["startDate"]?.ToString() ?? "";
+                string endStr = animeAttr["endDate"]?.ToString() ?? "";
+
+                DateTime? startDate = DateTime.TryParse(startStr, out var pStart) ? pStart : null;
+                DateTime? endDate = DateTime.TryParse(endStr, out var pEnd) ? pEnd : null;
+
+                // Airing status checks
+                if (animeStatus == "finished" && endDate.HasValue && endDate.Value < monthStart)
+                {
+                    continue; // Finished in the past
+                }
+                if (startDate.HasValue && startDate.Value > monthEnd)
+                {
+                    continue; // Not yet started
+                }
+
+                int progress = entryAttr["progress"]?.GetValue<int?>() ?? 0;
+                double? ratingTwenty = entryAttr["ratingTwenty"]?.GetValue<double?>();
+
+                string title = animeAttr["canonicalTitle"]?.ToString() ?? animeAttr["titles"]?["en"]?.ToString() ?? "";
+                string poster = animeAttr["posterImage"]?["large"]?.ToString() ?? animeAttr["posterImage"]?["medium"]?.ToString() ?? "";
+                int? totalEp = animeAttr["episodeCount"]?.GetValue<int?>();
+                string synopsis = animeAttr["synopsis"]?.ToString() ?? "";
+
+                DateTime start = startDate ?? monthStart;
+                DayOfWeek airDay = start.DayOfWeek;
+
+                for (int day = 1; day <= daysInMonth; day++)
+                {
+                    var currentDate = new DateTime(year, month, day, 18, 0, 0, DateTimeKind.Utc);
+                    if (startDate.HasValue && currentDate < startDate.Value.Date) continue;
+                    if (endDate.HasValue && currentDate > endDate.Value.Date.AddDays(1)) continue;
+
+                    if (currentDate.DayOfWeek == airDay)
+                    {
+                        int weeksDiff = (int)Math.Max(1, Math.Ceiling((currentDate - start).TotalDays / 7.0));
+                        int epNumber = Math.Min(totalEp ?? 999, Math.Max(1, progress > 0 ? progress + (weeksDiff > 0 ? weeksDiff % 12 : 1) : weeksDiff));
+
+                        var airTime = new DateTimeOffset(currentDate).ToLocalTime();
+
+                        episodes.Add(new CalendarMonthEpisode
+                        {
+                            Id = $"kitsu_{animeRelId}_d{day}",
+                            KitsuId = animeRelId,
+                            TitleEnglish = title,
+                            TitleRomaji = title,
+                            CoverImage = poster,
+                            Format = (animeAttr["showType"]?.ToString() ?? "TV").ToUpperInvariant(),
+                            TotalEpisodes = totalEp,
+                            EpisodeNumber = epNumber,
+                            AiringAt = airTime,
+                            AiringTimeFormatted = airTime.ToString("HH:mm"),
+                            AiringDateFormatted = airTime.ToString("yyyy-MM-dd"),
+                            TimeUntilAiringSeconds = (long)(airTime - DateTimeOffset.UtcNow).TotalSeconds,
+                            AverageScore = ratingTwenty.HasValue ? ratingTwenty.Value * 5.0 : null,
+                            Synopsis = synopsis,
+                            KitsuUrl = $"https://kitsu.app/anime/{animeAttr["slug"]?.ToString() ?? animeRelId}",
+                            SiteUrl = $"https://kitsu.app/anime/{animeAttr["slug"]?.ToString() ?? animeRelId}",
+                            UserProgress = progress,
+                            UserScore = ratingTwenty.HasValue ? ratingTwenty.Value * 5.0 : null
+                        });
+                    }
+                }
+            }
+
+            return (avatarUrl, episodes.OrderBy(e => e.AiringAt).ToList(), totalWatching);
         }
     }
 }
