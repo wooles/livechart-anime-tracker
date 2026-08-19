@@ -204,55 +204,30 @@ async function handleMalXmlFile(event) {
 }
 
 async function fetchCalendar() {
+    if (!state.username) return;
     showLoading(`Loading anime calendar from ${state.platform} for ${state.username}...`);
     try {
-        // Detect if already running on Render or localhost
         const isSameOrigin = window.location.origin.includes('onrender.com') || window.location.origin.includes('localhost:5000');
         const apiBase = isSameOrigin ? '' : BACKEND_API_URL;
         const primaryUrl = `${apiBase}/api/calendar/month?platform=${encodeURIComponent(state.platform)}&username=${encodeURIComponent(state.username)}&year=${state.year}&month=${state.month}`;
-        
+
+        let response;
         try {
-            const apiRes = await fetch(primaryUrl);
-            if (apiRes.ok) {
-                const apiData = await apiRes.json();
-                state.calendarData = apiData;
-                renderCalendar(apiData);
-                return;
-            } else {
-                const errData = await apiRes.json().catch(() => ({}));
-                if (errData && errData.error) {
-                    throw new Error(errData.error);
-                }
-                throw new Error(`Server returned status ${apiRes.status}`);
-            }
-        } catch (netErr) {
-            if (netErr.message && !netErr.message.includes('fetch') && !netErr.message.includes('NetworkError') && !netErr.message.includes('Failed to fetch')) {
-                throw netErr;
-            }
-            console.warn("Backend unreachable, trying direct client query:", netErr);
+            response = await fetch(primaryUrl);
+        } catch (fetchErr) {
+            throw new Error(`Cannot connect to server. If the server was sleeping, it takes ~30 seconds to wake up. Please wait a moment and click Load again.`);
         }
 
-        // 2. Client-side fallback for AniList and Kitsu
-        let episodes = [];
-        let totalWatching = 0;
-
-        if (state.platform === 'AniList') {
-            const res = await fetchAniListWatching(state.username, state.year, state.month);
-            episodes = res.episodes;
-            totalWatching = res.totalWatching;
-        } else if (state.platform === 'Kitsu') {
-            const res = await fetchKitsuWatching(state.username, state.year, state.month);
-            episodes = res.episodes;
-            totalWatching = res.totalWatching;
-        } else {
-            throw new Error(`Could not connect to backend server at ${BACKEND_API_URL}. The server may be waking up from free-tier sleep (takes ~30s). Please try again in a few seconds.`);
+        if (!response.ok) {
+            const errJson = await response.json().catch(() => ({}));
+            throw new Error(errJson.error || `Server error (${response.status})`);
         }
 
-        const gridData = buildMonthlyGrid(state.year, state.month, episodes, state.username, state.platform, totalWatching);
-        state.calendarData = { ...gridData, episodes };
-        renderCalendar(gridData);
+        const data = await response.json();
+        state.calendarData = data;
+        renderCalendar(data);
     } catch (err) {
-        console.error(err);
+        console.error("Fetch calendar error:", err);
         alert(err.message);
     } finally {
         hideLoading();
