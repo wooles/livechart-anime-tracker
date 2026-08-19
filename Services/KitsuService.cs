@@ -38,12 +38,20 @@ namespace LiveChartTracker.Services
 
         public async Task<(string? avatarUrl, List<CalendarMonthEpisode> episodes, int totalWatching)> GetWatchingMonthEpisodesAsync(string username, int year, int month)
         {
-            var userUrl = $"{KitsuBaseUrl}/users?filter[name]={Uri.EscapeDataString(username)}";
+            // 1. User lookup with slug / name fallback
+            var userUrl = $"{KitsuBaseUrl}/users?filter[slug]={Uri.EscapeDataString(username)}";
             var userRes = await _httpClient.GetAsync(userUrl);
-            userRes.EnsureSuccessStatusCode();
-
-            var userJson = JsonNode.Parse(await userRes.Content.ReadAsStringAsync());
+            var userJson = userRes.IsSuccessStatusCode ? JsonNode.Parse(await userRes.Content.ReadAsStringAsync()) : null;
             var users = userJson?["data"]?.AsArray();
+
+            if (users == null || users.Count == 0)
+            {
+                userUrl = $"{KitsuBaseUrl}/users?filter[name]={Uri.EscapeDataString(username)}";
+                userRes = await _httpClient.GetAsync(userUrl);
+                userJson = userRes.IsSuccessStatusCode ? JsonNode.Parse(await userRes.Content.ReadAsStringAsync()) : null;
+                users = userJson?["data"]?.AsArray();
+            }
+
             if (users == null || users.Count == 0)
             {
                 throw new Exception($"User '{username}' was not found on Kitsu.");
@@ -54,52 +62,68 @@ namespace LiveChartTracker.Services
             var avatarUrl = userNode?["attributes"]?["avatar"]?["large"]?.ToString() 
                 ?? userNode?["attributes"]?["avatar"]?["original"]?.ToString();
 
-            var libraryUrl = $"{KitsuBaseUrl}/library-entries?filter[userId]={userId}&filter[kind]=anime&filter[status]=current,planned&include=anime,anime.mappings&page[limit]=100";
-            var libRes = await _httpClient.GetAsync(libraryUrl);
-            if (!libRes.IsSuccessStatusCode)
-            {
-                return (avatarUrl, new List<CalendarMonthEpisode>(), 0);
-            }
-
-            var libJson = JsonNode.Parse(await libRes.Content.ReadAsStringAsync());
-            var entries = libJson?["data"]?.AsArray();
-            var included = libJson?["included"]?.AsArray();
-
-            if (entries == null || entries.Count == 0)
-            {
-                return (avatarUrl, new List<CalendarMonthEpisode>(), 0);
-            }
-
+            // 2. Fetch both 'current' (Watching) and 'planned' (Plan to Watch) entries
             var animeDict = new Dictionary<string, JsonNode>();
-            var mappingsDict = new Dictionary<string, (int? malId, int? aniId)>();
+            var rawMappingsDict = new Dictionary<string, (string site, int extId)>();
+            int totalWatching = 0;
 
-            if (included != null)
+            var statusList = new[] { "current", "planned" };
+            foreach (var status in statusList)
             {
-                foreach (var inc in included)
+                var libraryUrl = $"{KitsuBaseUrl}/library-entries?filter[userId]={userId}&filter[kind]=anime&filter[status]={status}&include=anime,anime.mappings&page[limit]=50";
+                var libRes = await _httpClient.GetAsync(libraryUrl);
+                if (!libRes.IsSuccessStatusCode) continue;
+
+                var libJson = JsonNode.Parse(await libRes.Content.ReadAsStringAsync());
+                var entries = libJson?["data"]?.AsArray();
+                var included = libJson?["included"]?.AsArray();
+
+                if (entries != null) totalWatching += entries.Count;
+
+                if (included != null)
                 {
-                    var incType = inc?["type"]?.ToString();
-                    var incId = inc?["id"]?.ToString();
-                    if (incType == "anime" && incId != null && inc != null)
+                    foreach (var inc in included)
                     {
-                        animeDict[incId] = inc;
-                    }
-                    else if (incType == "mappings" && inc != null)
-                    {
-                        var site = inc["attributes"]?["externalSite"]?.ToString();
-                        var extIdStr = inc["attributes"]?["externalId"]?.ToString();
-                        if (int.TryParse(extIdStr, out var extId))
+                        var incType = inc?["type"]?.ToString();
+                        var incId = inc?["id"]?.ToString();
+                        if (incType == "anime" && incId != null && inc != null)
                         {
-                            var itemAnimeId = inc["relationships"]?["item"]?["data"]?["id"]?.ToString();
-                            if (itemAnimeId != null)
+                            animeDict[incId] = inc;
+                        }
+                        else if (incType == "mappings" && incId != null && inc != null)
+                        {
+                            var site = inc["attributes"]?["externalSite"]?.ToString() ?? "";
+                            var extIdStr = inc["attributes"]?["externalId"]?.ToString() ?? "";
+                            if (int.TryParse(extIdStr, out var extId))
                             {
-                                if (!mappingsDict.TryGetValue(itemAnimeId, out var pair))
-                                {
-                                    pair = (null, null);
-                                }
-                                if (site == "myanimelist/anime") pair.malId = extId;
-                                if (site == "anilist/anime") pair.aniId = extId;
-                                mappingsDict[itemAnimeId] = pair;
+                                rawMappingsDict[incId] = (site, extId);
                             }
+                        }
+                    }
+                }
+            }
+
+            if (animeDict.Count == 0)
+            {
+                return (avatarUrl, new List<CalendarMonthEpisode>(), 0);
+            }
+
+            // 3. Resolve MAL and AniList IDs from anime mapping relationships
+            var malIds = new List<int>();
+            var aniIds = new List<int>();
+
+            foreach (var anime in animeDict.Values)
+            {
+                var mapRefs = anime["relationships"]?["mappings"]?["data"]?.AsArray();
+                if (mapRefs != null)
+                {
+                    foreach (var mRef in mapRefs)
+                    {
+                        var mId = mRef?["id"]?.ToString();
+                        if (mId != null && rawMappingsDict.TryGetValue(mId, out var mInfo))
+                        {
+                            if (mInfo.site == "myanimelist/anime") malIds.Add(mInfo.extId);
+                            if (mInfo.site == "anilist/anime") aniIds.Add(mInfo.extId);
                         }
                     }
                 }
@@ -109,15 +133,7 @@ namespace LiveChartTracker.Services
             var endOfMonth = new DateTimeOffset(year, month, DateTime.DaysInMonth(year, month), 23, 59, 59, TimeSpan.Zero);
             var episodes = new List<CalendarMonthEpisode>();
 
-            var malIds = new List<int>();
-            var aniIds = new List<int>();
-
-            foreach (var kvp in mappingsDict)
-            {
-                if (kvp.Value.malId.HasValue) malIds.Add(kvp.Value.malId.Value);
-                if (kvp.Value.aniId.HasValue) aniIds.Add(kvp.Value.aniId.Value);
-            }
-
+            // 4. Query AniList for live TV broadcast schedules
             if (malIds.Count > 0 || aniIds.Count > 0)
             {
                 const string scheduleGql = @"
@@ -192,7 +208,7 @@ query ($malIds: [Int], $aniIds: [Int]) {
                 }
             }
 
-            return (avatarUrl, episodes.OrderBy(e => e.AiringAt).ToList(), entries.Count);
+            return (avatarUrl, episodes.OrderBy(e => e.AiringAt).ToList(), totalWatching);
         }
 
         private async Task<JsonNode?> ExecuteGraphQLAsync(string query, object variables)
