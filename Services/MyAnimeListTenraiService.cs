@@ -109,8 +109,13 @@ namespace LiveChartTracker.Services
             var episodes = new List<CalendarMonthEpisode>();
             var processedMalIds = new HashSet<int>();
 
-            // 1. Fetch exact live broadcasting schedules via AniList schedule network (LiveChart accurate broadcast times)
-            var malIds = watchingList.Select(w => w.malId).Where(id => id > 0).Distinct().ToList();
+            // 1. Fetch exact live broadcasting schedules via AniList schedule network for currently airing / upcoming shows
+            var relevantAiringShows = watchingList.Where(w => 
+                w.malId > 0 && 
+                (w.airingStatus == 1 || w.airingStatus == 3 || (w.startDate.HasValue && w.startDate.Value.Year >= year - 1 && (!w.endDate.HasValue || w.endDate.Value >= startOfMonth.DateTime)))
+            ).ToList();
+
+            var malIds = relevantAiringShows.Select(w => w.malId).Distinct().ToList();
 
             try
             {
@@ -145,16 +150,15 @@ query ($page: Int, $malIds: [Int]) {
     }
   }
 }";
-                var malChunks = malIds.Chunk(25).ToList();
+                var malChunks = malIds.Chunk(50).ToList();
                 var aniMediaMap = new Dictionary<int, JsonNode>(); // malId -> mediaNode
-                var aniIds = new List<int>();
 
                 foreach (var chunk in malChunks)
                 {
                     int aniPage = 1;
                     bool hasMoreMedia = true;
 
-                    while (hasMoreMedia && aniPage <= 5)
+                    while (hasMoreMedia && aniPage <= 3)
                     {
                         var mapRes = await ExecuteGraphQLAsync(malToAniQuery, new { page = aniPage, malIds = chunk });
                         var pageNode = mapRes?["data"]?["Page"];
@@ -176,7 +180,6 @@ query ($page: Int, $malIds: [Int]) {
                                     {
                                         aniMediaMap[malId.Value] = m;
                                     }
-                                    aniIds.Add(mId);
                                 }
                             }
                         }
@@ -238,121 +241,6 @@ query ($page: Int, $malIds: [Int]) {
                         }
 
                         processedMalIds.Add(malId);
-                    }
-                }
-
-                // Query exact airing schedules for any additional explicit schedule dates
-                if (aniIds.Count > 0)
-                {
-                    const string schedQuery = @"
-query ($page: Int, $perPage: Int, $mediaIds: [Int], $startSec: Int, $endSec: Int) {
-  Page(page: $page, perPage: $perPage) {
-    pageInfo {
-      hasNextPage
-    }
-    airingSchedules(mediaId_in: $mediaIds, airingAt_greater: $startSec, airingAt_lesser: $endSec, sort: TIME) {
-      id
-      episode
-      airingAt
-      timeUntilAiring
-      media {
-        id
-        idMal
-        title {
-          romaji
-          english
-        }
-        coverImage {
-          large
-        }
-        format
-        episodes
-        averageScore
-        description
-        siteUrl
-      }
-    }
-  }
-}";
-                    var aniChunks = aniIds.Distinct().Chunk(40).ToList();
-                    foreach (var achunk in aniChunks)
-                    {
-                        int p = 1;
-                        bool hasNext = true;
-                        while (hasNext && p <= 5)
-                        {
-                            var sRes = await ExecuteGraphQLAsync(schedQuery, new
-                            {
-                                page = p,
-                                perPage = 50,
-                                mediaIds = achunk,
-                                startSec = (int)startSec,
-                                endSec = (int)endSec
-                            });
-
-                            var pageNode = sRes?["data"]?["Page"];
-                            if (pageNode == null) break;
-                            hasNext = pageNode["pageInfo"]?["hasNextPage"]?.GetValue<bool>() ?? false;
-
-                            var schedules = pageNode["airingSchedules"]?.AsArray();
-                            if (schedules != null)
-                            {
-                                foreach (var sch in schedules)
-                                {
-                                    var media = sch?["media"];
-                                    if (media == null) continue;
-
-                                    int? mMalId = media["idMal"]?.GetValue<int?>();
-                                    int epNum = sch?["episode"]?.GetValue<int>() ?? 1;
-                                    long airSec = sch?["airingAt"]?.GetValue<long>() ?? 0;
-                                    long timeUntil = sch?["timeUntilAiring"]?.GetValue<long>() ?? 0;
-
-                                    var airUtc = DateTimeOffset.FromUnixTimeSeconds(airSec).ToUniversalTime();
-
-                                    var userEntry = watchingList.FirstOrDefault(w => w.malId == mMalId);
-
-                                    // Remove any projected episode if exact official schedule is present
-                                    var existingIdx = episodes.FindIndex(e => e.MalId == mMalId && e.EpisodeNumber == epNum);
-                                    var exactEp = new CalendarMonthEpisode
-                                    {
-                                        Id = $"mal_{mMalId ?? media["id"]?.GetValue<int>()}_ep{epNum}",
-                                        MalId = mMalId,
-                                        AniListId = media["id"]?.GetValue<int?>(),
-                                        TitleEnglish = userEntry.title ?? media["title"]?["english"]?.ToString() ?? media["title"]?["romaji"]?.ToString() ?? "",
-                                        TitleRomaji = media["title"]?["romaji"]?.ToString() ?? userEntry.title ?? "",
-                                        CoverImage = userEntry.img ?? media["coverImage"]?["large"]?.ToString() ?? "",
-                                        Format = media["format"]?.ToString() ?? userEntry.mediaType ?? "TV",
-                                        TotalEpisodes = userEntry.totalEp > 0 ? userEntry.totalEp : media["episodes"]?.GetValue<int?>(),
-                                        EpisodeNumber = epNum,
-                                        AiringAt = airUtc,
-                                        AiringTimeFormatted = airUtc.ToString("HH:mm"),
-                                        AiringDateFormatted = airUtc.ToString("yyyy-MM-dd"),
-                                        TimeUntilAiringSeconds = timeUntil,
-                                        AverageScore = media["averageScore"]?.GetValue<double?>() ?? (userEntry.score > 0 ? userEntry.score : null),
-                                        Synopsis = media["description"]?.ToString() ?? "",
-                                        MalUrl = mMalId.HasValue ? $"https://myanimelist.net/anime/{mMalId.Value}" : null,
-                                        AniListUrl = media["siteUrl"]?.ToString(),
-                                        SiteUrl = mMalId.HasValue ? $"https://myanimelist.net/anime/{mMalId.Value}" : media["siteUrl"]?.ToString(),
-                                        UserProgress = userEntry.watched,
-                                        UserScore = userEntry.score > 0 ? userEntry.score : null,
-                                        ListStatus = userEntry.listStatus ?? "Watching"
-                                    };
-
-                                    if (existingIdx >= 0)
-                                    {
-                                        episodes[existingIdx] = exactEp;
-                                    }
-                                    else
-                                    {
-                                        episodes.Add(exactEp);
-                                    }
-
-                                    if (mMalId.HasValue) processedMalIds.Add(mMalId.Value);
-                                }
-                            }
-
-                            p++;
-                        }
                     }
                 }
             }
