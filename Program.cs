@@ -53,7 +53,7 @@ app.MapGet("/api/calendar/month", async (string? platform, string? username, int
 
     if (targetMonth < 1 || targetMonth > 12)
     {
-        return Results.BadRequest(new { error = "Miesiąc musi być w przedziale 1-12." });
+        return Results.BadRequest(new { error = "Month must be between 1 and 12." });
     }
 
     try
@@ -72,7 +72,7 @@ app.MapGet("/api/export/ics", async (string? platform, string? username, int? ye
 {
     if (string.IsNullOrWhiteSpace(platform) || string.IsNullOrWhiteSpace(username))
     {
-        return Results.BadRequest(new { error = "Wymagane parametry 'platform' oraz 'username'." });
+        return Results.BadRequest(new { error = "Parameters 'platform' and 'username' are required." });
     }
 
     int targetYear = year ?? DateTime.UtcNow.Year;
@@ -88,7 +88,7 @@ app.MapGet("/api/export/ics", async (string? platform, string? username, int? ye
             remindMinutes ?? 15);
 
         var bytes = System.Text.Encoding.UTF8.GetBytes(icsContent);
-        return Results.File(bytes, "text/calendar", $"anime-kalendarz-{platform}-{username}-{targetYear}-{targetMonth:D2}.ics");
+        return Results.File(bytes, "text/calendar", $"anime-calendar-{platform}-{username}-{targetYear}-{targetMonth:D2}.ics");
     }
     catch (Exception ex)
     {
@@ -125,10 +125,10 @@ static async Task RunCliModeAsync(IServiceProvider services, string[] args)
 
     if (args.Contains("--help") || args.Contains("-h"))
     {
-        Console.WriteLine("Anime Monthly Calendar - Opcje wiersza poleceń:");
-        Console.WriteLine("  --calendar <platform> <user> [rok] [miesiac] : Wyświetla kalendarz miesiąca oglądanych anime");
-        Console.WriteLine("  --export-ics <platform> <user> <plik>        : Eksportuje kalendarz do pliku .ics");
-        Console.WriteLine("  --server                                     : Uruchamia serwer webowy");
+        Console.WriteLine("Anime Monthly Calendar - CLI Command Options:");
+        Console.WriteLine("  --calendar <platform> <user> [year] [month] : Displays the monthly watching calendar");
+        Console.WriteLine("  --export-ics <platform> <user> <file>       : Exports the calendar to an .ics file");
+        Console.WriteLine("  --server                                    : Starts the web server");
         return;
     }
 
@@ -140,18 +140,18 @@ static async Task RunCliModeAsync(IServiceProvider services, string[] args)
         int yr = (calIdx + 3 < args.Length && int.TryParse(args[calIdx + 3], out var yVal)) ? yVal : DateTime.UtcNow.Year;
         int mo = (calIdx + 4 < args.Length && int.TryParse(args[calIdx + 4], out var mVal)) ? mVal : DateTime.UtcNow.Month;
 
-        Console.WriteLine($"Pobieranie kalendarza oglądanych anime dla {user} ({plat}) na {mo:D2}/{yr}...");
+        Console.WriteLine($"Fetching watching anime calendar for {user} ({plat}) for {mo:D2}/{yr}...");
         var cal = await aggService.GetMonthlyCalendarAsync(plat, user, yr, mo);
 
-        Console.WriteLine($"\n📅 KALENDARZ: {cal.MonthNamePl.ToUpper()} {cal.Year} - {cal.Username} ({cal.Platform})");
-        Console.WriteLine($"Oglądanych serii: {cal.TotalWatchingAnime} | Premiry odcinków w tym miesiącu: {cal.TotalEpisodesInMonth}\n");
+        Console.WriteLine($"\n📅 CALENDAR: {cal.MonthName.ToUpper()} {cal.Year} - {cal.Username} ({cal.Platform})");
+        Console.WriteLine($"Watching anime count: {cal.TotalWatchingAnime} | Episode premieres this month: {cal.TotalEpisodesInMonth}\n");
 
         foreach (var day in cal.Days.Where(d => d.IsCurrentMonth && d.Episodes.Any()))
         {
-            Console.WriteLine($"  [{day.DateString}] ({day.DayOfWeekPl}):");
+            Console.WriteLine($"  [{day.DateString}] ({day.DayOfWeek}):");
             foreach (var ep in day.Episodes)
             {
-                Console.WriteLine($"     ⏰ {ep.AiringTimeFormatted} | Odc. {ep.EpisodeNumber,-3} | {ep.DisplayTitle} (Twój postęp: {ep.UserProgress}/{ep.TotalEpisodes?.ToString() ?? "?"})");
+                Console.WriteLine($"     ⏰ {ep.AiringTimeFormatted} | Ep. {ep.EpisodeNumber,-3} | {ep.DisplayTitle} (Your progress: {ep.UserProgress}/{ep.TotalEpisodes?.ToString() ?? "?"})");
             }
         }
         return;
@@ -166,10 +166,10 @@ static async Task RunCliModeAsync(IServiceProvider services, string[] args)
         int yr = DateTime.UtcNow.Year;
         int mo = DateTime.UtcNow.Month;
 
-        Console.WriteLine($"Generowanie pliku .ics dla {user} ({plat})...");
+        Console.WriteLine($"Generating .ics calendar file for {user} ({plat})...");
         var ics = await aggService.ExportCalendarIcsAsync(plat, user, yr, mo);
         await File.WriteAllTextAsync(outFile, ics);
-        Console.WriteLine($"Zapisano do: {outFile}");
+        Console.WriteLine($"Saved to: {outFile}");
         return;
     }
 }

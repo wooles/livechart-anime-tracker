@@ -84,7 +84,7 @@ namespace LiveChartTracker.Services
                     (avatarUrl, episodes, totalWatching) = await _malTenraiService.GetWatchingMonthEpisodesAsync(username, year, month);
                     break;
                 default:
-                    throw new ArgumentException($"Nieobsługiwana platforma: {platform}. Dostępne: All, MyAnimeList, AniList, Kitsu");
+                    throw new ArgumentException($"Unsupported platform: {platform}. Available: All, MyAnimeList, AniList, Kitsu");
             }
 
             // Group episodes by Date (YYYY-MM-DD)
@@ -188,7 +188,7 @@ namespace LiveChartTracker.Services
 
             return _calendarExportService.GenerateIcsCalendar(
                 allEpisodes,
-                $"Harmonogram Oglądanych Anime - {username} ({calendar.MonthNamePl} {year})",
+                $"Anime Watching Schedule - {username} ({calendar.MonthName} {year})",
                 reminderMinutes);
         }
     }

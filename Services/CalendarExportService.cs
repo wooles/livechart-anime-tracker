@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -18,7 +18,7 @@ namespace LiveChartTracker.Services
             var sb = new StringBuilder();
             sb.AppendLine("BEGIN:VCALENDAR");
             sb.AppendLine("VERSION:2.0");
-            sb.AppendLine("PRODID:-//LiveChart Anime Monthly Calendar//PL");
+            sb.AppendLine("PRODID:-//LiveChart Anime Monthly Calendar//EN");
             sb.AppendLine("CALSCALE:GREGORIAN");
             sb.AppendLine("METHOD:PUBLISH");
             sb.AppendLine($"X-WR-CALNAME:{EscapeIcs(calendarName)}");
@@ -38,14 +38,14 @@ namespace LiveChartTracker.Services
                 sb.AppendLine($"DTSTAMP:{now:yyyyMMddTHHmmssZ}");
                 sb.AppendLine($"DTSTART:{startTime:yyyyMMddTHHmmssZ}");
                 sb.AppendLine($"DTEND:{endTime:yyyyMMddTHHmmssZ}");
-                sb.AppendLine($"SUMMARY:{EscapeIcs($"{ep.DisplayTitle} - Odc. {ep.EpisodeNumber}")}");
+                sb.AppendLine($"SUMMARY:{EscapeIcs($"{ep.DisplayTitle} - Ep. {ep.EpisodeNumber}")}");
                 
                 var desc = new StringBuilder();
-                desc.AppendLine($"Premiera odcinka {ep.EpisodeNumber} serii {ep.DisplayTitle}");
+                desc.AppendLine($"Episode {ep.EpisodeNumber} premiere of {ep.DisplayTitle}");
                 if (!string.IsNullOrEmpty(ep.Format)) desc.AppendLine($"Format: {ep.Format}");
                 if (ep.Studios.Any()) desc.AppendLine($"Studio: {string.Join(", ", ep.Studios)}");
-                if (ep.UserProgress.HasValue) desc.AppendLine($"Twój postęp: {ep.UserProgress}/{ep.TotalEpisodes?.ToString() ?? "?"}");
-                if (!string.IsNullOrEmpty(ep.SiteUrl)) desc.AppendLine($"Szczegóły: {ep.SiteUrl}");
+                if (ep.UserProgress.HasValue) desc.AppendLine($"Your progress: {ep.UserProgress}/{ep.TotalEpisodes?.ToString() ?? "?"}");
+                if (!string.IsNullOrEmpty(ep.SiteUrl)) desc.AppendLine($"Details: {ep.SiteUrl}");
                 
                 sb.AppendLine($"DESCRIPTION:{EscapeIcs(desc.ToString())}");
                 if (!string.IsNullOrEmpty(ep.SiteUrl))
@@ -57,7 +57,7 @@ namespace LiveChartTracker.Services
                 {
                     sb.AppendLine("BEGIN:VALARM");
                     sb.AppendLine("ACTION:DISPLAY");
-                    sb.AppendLine($"DESCRIPTION:{EscapeIcs($"Nowy odcinek: {ep.DisplayTitle} (Odc. {ep.EpisodeNumber})")}");
+                    sb.AppendLine($"DESCRIPTION:{EscapeIcs($"New episode: {ep.DisplayTitle} (Ep. {ep.EpisodeNumber})")}");
                     sb.AppendLine($"TRIGGER:-PT{reminderMinutes}M");
                     sb.AppendLine("END:VALARM");
                 }

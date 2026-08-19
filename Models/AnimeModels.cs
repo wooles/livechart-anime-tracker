@@ -129,7 +129,7 @@ namespace LiveChartTracker.Models
         public string DateString { get; set; } = string.Empty; // YYYY-MM-DD
         public int DayNumber { get; set; } // 1..31
         public string DayOfWeek { get; set; } = string.Empty; // Monday, Tuesday...
-        public string DayOfWeekPl { get; set; } = string.Empty; // Poniedziałek...
+        public string DayOfWeekPl { get; set; } = string.Empty; // Localized day of week name (Polish)
         public bool IsCurrentMonth { get; set; }
         public bool IsToday { get; set; }
         public List<CalendarMonthEpisode> Episodes { get; set; } = new();
