@@ -100,10 +100,13 @@ namespace LiveChartTracker.Models
         private static bool IsKnownStreaming(string site)
         {
             var s = site.ToLowerInvariant();
+            if (s.Contains("bilibili") || s.Contains("iqiyi") || s.Contains("iQ"))
+                return false;
+
             return s.Contains("crunchyroll") || s.Contains("netflix") || s.Contains("disney") || 
                    s.Contains("prime") || s.Contains("amazon") || s.Contains("max") || s.Contains("hbo") || 
                    s.Contains("adn") || s.Contains("animation digital network") || s.Contains("hidive") || 
-                   s.Contains("hulu") || s.Contains("bilibili") || s.Contains("youtube") || s.Contains("iqiyi");
+                   s.Contains("hulu") || s.Contains("youtube");
         }
 
         private static string NormalizeSite(string site)
@@ -117,10 +120,6 @@ namespace LiveChartTracker.Models
                 return "Max";
             if (s.Equals("Animation Digital Network", StringComparison.OrdinalIgnoreCase))
                 return "ADN";
-            if (s.Equals("Bilibili TV", StringComparison.OrdinalIgnoreCase))
-                return "Bilibili";
-            if (s.Equals("iQ", StringComparison.OrdinalIgnoreCase))
-                return "iQiyi";
             return s;
         }
     }

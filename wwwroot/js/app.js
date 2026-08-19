@@ -581,6 +581,65 @@ function formatLocalTime(isoStringOrDate) {
     }
 }
 
+// ==================== STREAMING SERVICES (OFFICIAL VECTOR LOGOS) ====================
+
+const STREAMING_PLATFORMS = [
+    {
+        id: 'crunchyroll',
+        name: 'Crunchyroll',
+        urlMatch: 'crunchyroll.com',
+        svg: `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm3.82 14.18A5.999 5.999 0 0 1 12 18c-3.314 0-6-2.686-6-6 0-1.745.748-3.315 1.94-4.41a6.002 6.002 0 0 0 7.88 6.59zm.98-2.38a6.007 6.007 0 0 0-4.6-7.6 5.992 5.992 0 0 1 4.6 7.6z"/></svg>`
+    },
+    {
+        id: 'disneyplus',
+        name: 'Disney+',
+        urlMatch: 'disneyplus.com',
+        svg: `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M11.5 3c-4.69 0-8.5 3.81-8.5 8.5 0 2.62 1.18 4.96 3.03 6.53C5.55 16.5 5 14.5 5 12.5c0-3.59 2.91-6.5 6.5-6.5 1.79 0 3.42.73 4.6 1.91A8.448 8.448 0 0 0 11.5 3zm6.5 7h-2v2h2v2h2v-2h2v-2h-2V8h-2v2z"/></svg>`
+    },
+    {
+        id: 'netflix',
+        name: 'Netflix',
+        urlMatch: 'netflix.com',
+        svg: `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M4 2h4.5l5.5 14V2H18v20h-4.5L8 8v14H4V2z"/></svg>`
+    },
+    {
+        id: 'max',
+        name: 'Max',
+        urlMatch: 'max.com',
+        svg: `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M2.5 6.5h3.8l2.9 6.8 2.9-6.8H16v11h-2.8v-6.7l-2.6 6.7h-1.4L6.6 10.8v6.7H2.5v-11zm15.1 0h3.2l2.3 4.4 2.3-4.4h3.1l-3.8 6.5 4 6.5h-3.3l-2.3-4.6-2.3 4.6h-3.3l4-6.5-3.9-6.5z"/></svg>`
+    },
+    {
+        id: 'primevideo',
+        name: 'Prime Video',
+        urlMatch: 'primevideo.com',
+        svg: `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M1.5 15.5c4.5 3.5 10.5 3.5 15 1 .3-.2.5 0 .3.3-2.1 2.2-5.5 3.7-8.8 3.7-3.8 0-7.3-1.8-9.5-4.5-.2-.3 0-.7.3-.5h.1zm15.8-.2c-.3.4-.8.7-1.3.8-.2 0-.3-.1-.4-.2-.1-.1-.1-.3 0-.4.3-.4.6-.9.6-1.5 0-1.7-1.3-3-3-3s-3 1.3-3 3c0 .6.2 1.1.6 1.5.1.1.1.3 0 .4-.1.1-.2.2-.4.2-.5-.1-1-.4-1.3-.8-.5-.8-.7-1.7-.7-2.7 0-2.6 2.1-4.8 4.8-4.8s4.8 2.1 4.8 4.8c-.1 1-.3 1.9-.7 2.7zm2.4 1.1c-.2-.3-.1-.6.2-.8 1.1-.7 1.8-1.7 1.8-3 0-2.2-1.8-4-4-4s-4 1.8-4 4c0 1.3.6 2.3 1.6 3 .3.2.3.5.1.8-.2.3-.5.3-.8.1-1.3-.9-2.1-2.3-2.1-3.9 0-2.8 2.3-5.1 5.2-5.1s5.2 2.3 5.2 5.1c0 1.6-.8 3-2 3.9-.1.1-.3 0-.4-.1z"/></svg>`
+    },
+    {
+        id: 'adn',
+        name: 'ADN',
+        urlMatch: 'animationdigitalnetwork.fr',
+        svg: `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 2L2 22h4.5l1.8-4h7.4l1.8 4H22L12 2zm0 6.5l2.4 5.5H9.6L12 8.5z"/></svg>`
+    },
+    {
+        id: 'hidive',
+        name: 'HIDIVE',
+        urlMatch: 'hidive.com',
+        svg: `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M4 4h4v6h4V4h4v16h-4v-6H8v6H4V4z"/></svg>`
+    },
+    {
+        id: 'hulu',
+        name: 'Hulu',
+        urlMatch: 'hulu.com',
+        svg: `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M4 3h3.5v7.2c0 1.5.9 2.5 2.3 2.5 1.3 0 2.2-1 2.2-2.5V3h3.5v7.2c0 3.7-2.4 6.3-5.7 6.3-3.4 0-5.8-2.6-5.8-6.3V3z"/></svg>`
+    },
+    {
+        id: 'youtube',
+        name: 'YouTube',
+        urlMatch: 'youtube.com',
+        svg: `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M21.58 7.19c-.23-.86-.91-1.54-1.77-1.77C18.25 5 12 5 12 5s-6.25 0-7.81.42c-.86.23-1.54.91-1.77 1.77C2 8.75 2 12 2 12s0 3.25.42 4.81c.23.86.91 1.54 1.77 1.77C5.75 19 12 19 12 19s6.25 0 7.81-.42c.86-.23 1.54-.91 1.77-1.77C22 15.25 22 12 22 12s0-3.25-.42-4.81zM10 15V9l5.2 3L10 15z"/></svg>`
+    }
+];
+
 // ==================== DETAIL MODAL ====================
 
 function openDetailModal(ep) {
@@ -612,40 +671,35 @@ function openDetailModal(ep) {
 
     document.getElementById('modalSynopsis').innerHTML = ep.synopsis ? stripHtml(ep.synopsis) : 'No description available for this series.';
 
-    // STREAMING SERVICES (Crunchyroll, Disney+, Netflix, HBO Max, Prime Video, ADN, etc.)
+    // STREAMING SERVICES (Only show platforms where this anime is ACTUALLY streaming)
+    const streamSection = document.getElementById('modalStreamingSection');
     const streamContainer = document.getElementById('modalStreamingLinks');
     if (streamContainer) {
         streamContainer.innerHTML = '';
-        const searchTitle = ep.titleEnglish || ep.displayTitle || ep.titleRomaji;
-        const q = encodeURIComponent(searchTitle);
+        const addedPlatforms = new Set();
+        let validLinksCount = 0;
 
-        const popularPlatforms = [
-            { id: 'crunchyroll', name: 'Crunchyroll', icon: '🟠', urlMatch: 'crunchyroll.com', searchUrl: `https://www.crunchyroll.com/search?q=${q}` },
-            { id: 'disneyplus', name: 'Disney+', icon: '🏰', urlMatch: 'disneyplus.com', searchUrl: `https://www.disneyplus.com/search?q=${q}` },
-            { id: 'netflix', name: 'Netflix', icon: '🔴', urlMatch: 'netflix.com', searchUrl: `https://www.netflix.com/search?q=${q}` },
-            { id: 'max', name: 'Max', icon: '🟣', urlMatch: 'max.com', searchUrl: `https://www.max.com/search?q=${q}` },
-            { id: 'primevideo', name: 'Prime Video', icon: '📦', urlMatch: 'primevideo.com', searchUrl: `https://www.amazon.com/s?k=${q}&i=instant-video` },
-            { id: 'adn', name: 'ADN', icon: '🇫🇷', urlMatch: 'animationdigitalnetwork.fr', searchUrl: `https://animationdigitalnetwork.fr/video?search=${q}` },
-            { id: 'hidive', name: 'HIDIVE', icon: '💎', urlMatch: 'hidive.com', searchUrl: `https://www.hidive.com/search?q=${q}` },
-            { id: 'bilibili', name: 'Bilibili', icon: '📺', urlMatch: 'bilibili', searchUrl: `https://www.bilibili.tv/en/search-result?q=${q}` },
-            { id: 'youtube', name: 'YouTube', icon: '▶️', urlMatch: 'youtube.com', searchUrl: `https://www.youtube.com/results?search_query=${q}+anime` }
-        ];
-
-        const renderedPlatforms = new Set();
-
-        // 1. Direct verified streaming links from AniList / API
         if (Array.isArray(ep.streamingLinks) && ep.streamingLinks.length > 0) {
             ep.streamingLinks.forEach(link => {
-                const siteName = link.site || 'Stream';
-                const directUrl = link.url;
+                const siteName = (link.site || '').trim();
+                const directUrl = (link.url || '').trim();
                 if (!directUrl) return;
 
-                // Find matching platform definition
-                const matchedDef = popularPlatforms.find(p => 
+                // Completely remove and ignore Bilibili or iQiyi
+                if (siteName.toLowerCase().includes('bilibili') || siteName.toLowerCase().includes('iqiyi') || directUrl.toLowerCase().includes('bilibili') || directUrl.toLowerCase().includes('iq.com')) {
+                    return;
+                }
+
+                // Match with known platforms
+                const matchedDef = STREAMING_PLATFORMS.find(p => 
                     siteName.toLowerCase().includes(p.id) || 
                     siteName.toLowerCase().includes(p.name.toLowerCase()) || 
                     directUrl.toLowerCase().includes(p.urlMatch)
                 );
+
+                if (matchedDef && addedPlatforms.has(matchedDef.id)) {
+                    return; // Avoid duplicate button for same platform
+                }
 
                 const btn = document.createElement('a');
                 btn.href = directUrl;
@@ -654,34 +708,25 @@ function openDetailModal(ep) {
 
                 if (matchedDef) {
                     btn.className = `streaming-btn ${matchedDef.id}`;
-                    btn.innerHTML = `<span>${matchedDef.icon}</span> <span>${matchedDef.name}</span>`;
-                    renderedPlatforms.add(matchedDef.id);
+                    btn.innerHTML = `${matchedDef.svg} <span>${matchedDef.name}</span>`;
+                    addedPlatforms.add(matchedDef.id);
                 } else {
                     btn.className = 'streaming-btn';
                     btn.innerHTML = `<span>📺</span> <span>${siteName}</span>`;
                 }
 
                 streamContainer.appendChild(btn);
+                validLinksCount++;
             });
         }
 
-        // 2. For requested popular streaming services not directly linked, add quick search button
-        const priorityServices = ['crunchyroll', 'disneyplus', 'netflix', 'max', 'primevideo', 'adn'];
-        priorityServices.forEach(pId => {
-            if (!renderedPlatforms.has(pId)) {
-                const p = popularPlatforms.find(x => x.id === pId);
-                if (p) {
-                    const btn = document.createElement('a');
-                    btn.href = p.searchUrl;
-                    btn.target = '_blank';
-                    btn.rel = 'noopener noreferrer';
-                    btn.className = `streaming-btn search-fallback`;
-                    btn.title = `Search for "${searchTitle}" on ${p.name}`;
-                    btn.innerHTML = `<span>${p.icon}</span> <span>${p.name} 🔍</span>`;
-                    streamContainer.appendChild(btn);
-                }
+        if (streamSection) {
+            if (validLinksCount > 0) {
+                streamSection.classList.remove('hidden');
+            } else {
+                streamSection.classList.add('hidden');
             }
-        });
+        }
     }
 
     // Database Links
