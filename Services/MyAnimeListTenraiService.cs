@@ -116,8 +116,11 @@ namespace LiveChartTracker.Services
             {
                 // Map MAL IDs to AniList IDs with nextAiringEpisode anchor
                 const string malToAniQuery = @"
-query ($malIds: [Int]) {
-  Page(page: 1, perPage: 50) {
+query ($page: Int, $malIds: [Int]) {
+  Page(page: $page, perPage: 50) {
+    pageInfo {
+      hasNextPage
+    }
     media(idMal_in: $malIds) {
       id
       idMal
@@ -142,31 +145,43 @@ query ($malIds: [Int]) {
     }
   }
 }";
-                var malChunks = malIds.Chunk(40).ToList();
+                var malChunks = malIds.Chunk(25).ToList();
                 var aniMediaMap = new Dictionary<int, JsonNode>(); // malId -> mediaNode
                 var aniIds = new List<int>();
 
                 foreach (var chunk in malChunks)
                 {
-                    var mapRes = await ExecuteGraphQLAsync(malToAniQuery, new { malIds = chunk });
-                    var mediaList = mapRes?["data"]?["Page"]?["media"]?.AsArray();
-                    if (mediaList != null)
+                    int aniPage = 1;
+                    bool hasMoreMedia = true;
+
+                    while (hasMoreMedia && aniPage <= 5)
                     {
-                        foreach (var m in mediaList)
+                        var mapRes = await ExecuteGraphQLAsync(malToAniQuery, new { page = aniPage, malIds = chunk });
+                        var pageNode = mapRes?["data"]?["Page"];
+                        if (pageNode == null) break;
+
+                        hasMoreMedia = pageNode["pageInfo"]?["hasNextPage"]?.GetValue<bool>() ?? false;
+                        var mediaList = pageNode["media"]?.AsArray();
+                        if (mediaList != null)
                         {
-                            int mId = m?["id"]?.GetValue<int>() ?? 0;
-                            int? malId = m?["idMal"]?.GetValue<int?>();
-                            if (mId > 0 && malId.HasValue && m != null)
+                            foreach (var m in mediaList)
                             {
-                                if (!aniMediaMap.TryGetValue(malId.Value, out var existing) ||
-                                    (m["nextAiringEpisode"] != null && existing["nextAiringEpisode"] == null) ||
-                                    (m["status"]?.ToString() == "RELEASING" && existing["status"]?.ToString() != "RELEASING"))
+                                int mId = m?["id"]?.GetValue<int>() ?? 0;
+                                int? malId = m?["idMal"]?.GetValue<int?>();
+                                if (mId > 0 && malId.HasValue && m != null)
                                 {
-                                    aniMediaMap[malId.Value] = m;
+                                    if (!aniMediaMap.TryGetValue(malId.Value, out var existing) ||
+                                        (m["nextAiringEpisode"] != null && existing["nextAiringEpisode"] == null) ||
+                                        (m["status"]?.ToString() == "RELEASING" && existing["status"]?.ToString() != "RELEASING"))
+                                    {
+                                        aniMediaMap[malId.Value] = m;
+                                    }
+                                    aniIds.Add(mId);
                                 }
-                                aniIds.Add(mId);
                             }
                         }
+
+                        aniPage++;
                     }
                 }
 
