@@ -1,4 +1,4 @@
-// Anime Watching Calendar - Frontend Logic (English & Full Width & Local Time)
+﻿// LiveChart Anime Watching Calendar - Pure Client-Side Engine for GitHub Pages (sort.moe/calendar)
 
 const state = {
     platform: 'AniList',
@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function initTheme() {
-    const savedTheme = localStorage.getItem('theme') || 'dark';
+    const savedTheme = localStorage.getItem('anime_cal_theme') || 'dark';
     document.documentElement.setAttribute('data-theme', savedTheme);
     document.getElementById('themeIcon').textContent = savedTheme === 'dark' ? '🌙' : '☀️';
 }
@@ -63,7 +63,7 @@ function setupEventListeners() {
         const current = document.documentElement.getAttribute('data-theme');
         const next = current === 'dark' ? 'light' : 'dark';
         document.documentElement.setAttribute('data-theme', next);
-        localStorage.setItem('theme', next);
+        localStorage.setItem('anime_cal_theme', next);
         document.getElementById('themeIcon').textContent = next === 'dark' ? '🌙' : '☀️';
     });
 
@@ -96,15 +96,13 @@ function setupEventListeners() {
         if (state.username) fetchCalendar();
     });
 
-    // Export ICS
+    // Export ICS (Client-side)
     document.getElementById('exportIcsBtn').addEventListener('click', () => {
-        if (!state.username) {
-            alert('Please enter a username first.');
-            document.getElementById('usernameInput').focus();
+        if (!state.calendarData || !state.calendarData.episodes || state.calendarData.episodes.length === 0) {
+            alert('No episodes loaded to export. Please load your calendar first.');
             return;
         }
-        const url = `/api/export/ics?platform=${encodeURIComponent(state.platform)}&username=${encodeURIComponent(state.username)}&year=${state.year}&month=${state.month}`;
-        window.location.href = url;
+        generateAndDownloadIcs(state.calendarData);
     });
 
     // Close Modal on backdrop click
@@ -138,19 +136,31 @@ function handleLoadCalendar() {
     fetchCalendar();
 }
 
+// ==================== CALENDAR DATA FETCHING ====================
+
 async function fetchCalendar() {
-    showLoading(`Loading calendar from ${state.platform} for ${state.username}...`);
+    showLoading(`Loading anime calendar from ${state.platform} for ${state.username}...`);
     try {
-        const url = `/api/calendar/month?platform=${encodeURIComponent(state.platform)}&username=${encodeURIComponent(state.username)}&year=${state.year}&month=${state.month}`;
-        const res = await fetch(url);
-        if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error || 'Failed to load calendar.');
+        let episodes = [];
+        let totalWatching = 0;
+
+        if (state.platform === 'AniList') {
+            const res = await fetchAniListWatching(state.username, state.year, state.month);
+            episodes = res.episodes;
+            totalWatching = res.totalWatching;
+        } else if (state.platform === 'MyAnimeList') {
+            const res = await fetchMalWatching(state.username, state.year, state.month);
+            episodes = res.episodes;
+            totalWatching = res.totalWatching;
+        } else if (state.platform === 'Kitsu') {
+            const res = await fetchKitsuWatching(state.username, state.year, state.month);
+            episodes = res.episodes;
+            totalWatching = res.totalWatching;
         }
 
-        const data = await res.json();
-        state.calendarData = data;
-        renderCalendar(data);
+        const gridData = buildMonthlyGrid(state.year, state.month, episodes, state.username, state.platform, totalWatching);
+        state.calendarData = { ...gridData, episodes };
+        renderCalendar(gridData);
     } catch (err) {
         console.error(err);
         alert('Error: ' + err.message);
@@ -159,14 +169,405 @@ async function fetchCalendar() {
     }
 }
 
-function formatLocalTime(isoString) {
-    if (!isoString) return '--:--';
-    try {
-        const d = new Date(isoString);
-        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-    } catch {
-        return '--:--';
+// 1. AniList Client-side GraphQL
+async function fetchAniListWatching(username, year, month) {
+    const userQuery = `
+    query ($userName: String) {
+      User(name: $userName) {
+        name
+        avatar { large }
+      }
+      MediaListCollection(userName: $userName, type: ANIME, status: CURRENT) {
+        lists {
+          entries {
+            progress
+            score
+            media {
+              id
+              idMal
+              title { romaji english native }
+              coverImage { large extraLarge }
+              format
+              status
+              episodes
+              duration
+              averageScore
+              description
+              siteUrl
+            }
+          }
+        }
+      }
+    }`;
+
+    const userRes = await fetch("https://graphql.anilist.co", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify({ query: userQuery, variables: { userName: username } })
+    });
+
+    if (!userRes.ok) {
+        throw new Error(`User "${username}" not found on AniList or watchlist is private.`);
     }
+
+    const userData = await userRes.json();
+    if (userData.errors) throw new Error(userData.errors[0].message);
+
+    const lists = userData.data?.MediaListCollection?.lists || [];
+    const watchingMap = new Map();
+
+    lists.forEach(l => {
+        (l.entries || []).forEach(e => {
+            if (e.media?.id) {
+                watchingMap.set(e.media.id, {
+                    progress: e.progress || 0,
+                    score: e.score || null,
+                    media: e.media
+                });
+            }
+        });
+    });
+
+    const totalWatching = watchingMap.size;
+    if (totalWatching === 0) return { episodes: [], totalWatching: 0 };
+
+    const mediaIds = Array.from(watchingMap.keys());
+
+    const startOfMonth = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
+    startOfMonth.setUTCDate(startOfMonth.getUTCDate() - 2);
+    const endOfMonth = new Date(Date.UTC(year, month, 1, 0, 0, 0));
+    endOfMonth.setUTCDate(endOfMonth.getUTCDate() + 2);
+
+    const startSec = Math.floor(startOfMonth.getTime() / 1000);
+    const endSec = Math.floor(endOfMonth.getTime() / 1000);
+
+    const schedQuery = `
+    query ($page: Int, $mediaIds: [Int], $startSec: Int, $endSec: Int) {
+      Page(page: $page, perPage: 50) {
+        pageInfo { hasNextPage }
+        airingSchedules(mediaId_in: $mediaIds, airingAt_greater: $startSec, airingAt_lesser: $endSec, sort: TIME) {
+          id
+          episode
+          airingAt
+          timeUntilAiring
+          media {
+            id
+            idMal
+            title { romaji english }
+            coverImage { large }
+            format
+            episodes
+            averageScore
+            description
+            siteUrl
+          }
+        }
+      }
+    }`;
+
+    const episodes = [];
+    const chunks = chunkArray(mediaIds, 50);
+
+    for (const chunk of chunks) {
+        let page = 1;
+        let hasNext = true;
+        while (hasNext && page <= 5) {
+            const sRes = await fetch("https://graphql.anilist.co", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                body: JSON.stringify({ query: schedQuery, variables: { page, mediaIds: chunk, startSec, endSec } })
+            });
+            if (!sRes.ok) break;
+            const sData = await sRes.json();
+            const pageObj = sData.data?.Page;
+            if (!pageObj) break;
+
+            hasNext = pageObj.pageInfo?.hasNextPage || false;
+            (pageObj.airingSchedules || []).forEach(sch => {
+                const media = sch.media;
+                if (!media) return;
+                const userEntry = watchingMap.get(media.id);
+                const airUtc = new Date(sch.airingAt * 1000);
+
+                episodes.push({
+                    id: `anilist_${media.id}_ep${sch.episode}`,
+                    aniListId: media.id,
+                    malId: media.idMal,
+                    displayTitle: userEntry?.media?.title?.english || userEntry?.media?.title?.romaji || media.title?.english || media.title?.romaji,
+                    titleRomaji: media.title?.romaji,
+                    coverImage: media.coverImage?.large,
+                    format: media.format || 'TV',
+                    totalEpisodes: userEntry?.media?.episodes || media.episodes,
+                    episodeNumber: sch.episode,
+                    airingAt: airUtc.toISOString(),
+                    airingTimeFormatted: formatLocalTime(airUtc),
+                    airingDateFormatted: airUtc.toISOString().split('T')[0],
+                    averageScore: media.averageScore,
+                    synopsis: media.description || '',
+                    malUrl: media.idMal ? `https://myanimelist.net/anime/${media.idMal}` : null,
+                    aniListUrl: media.siteUrl || `https://anilist.co/anime/${media.id}`,
+                    userProgress: userEntry?.progress || 0
+                });
+            });
+            page++;
+        }
+    }
+
+    return { episodes, totalWatching };
+}
+
+// 2. MyAnimeList Client-side via Jikan v4 + AniList Live Broadcasting Schedules
+async function fetchMalWatching(username, year, month) {
+    let watching = [];
+    try {
+        const jikanRes = await fetch(`https://api.jikan.moe/v4/users/${encodeURIComponent(username)}/userlist/anime?status=watching`);
+        if (jikanRes.ok) {
+            const jikanData = await jikanRes.json();
+            watching = (jikanData.data || []).map(item => ({
+                malId: item.entry?.mal_id,
+                title: item.entry?.title,
+                image: item.entry?.images?.jpg?.large_image_url,
+                watched: item.episodes_watched || 0,
+                score: item.score || 0
+            }));
+        }
+    } catch (e) {
+        console.warn("Jikan fetch error:", e);
+    }
+
+    // Fallback: try AniList MediaListCollection with matching username
+    if (watching.length === 0) {
+        try {
+            return await fetchAniListWatching(username, year, month);
+        } catch {}
+        throw new Error(`Failed to load watching anime for MyAnimeList user "${username}". Make sure your anime list is public on MyAnimeList.`);
+    }
+
+    const totalWatching = watching.length;
+    const malIds = watching.map(w => w.malId).filter(Boolean);
+
+    // Query exact live airing schedules from AniList for these MAL IDs
+    const startOfMonth = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
+    startOfMonth.setUTCDate(startOfMonth.getUTCDate() - 2);
+    const endOfMonth = new Date(Date.UTC(year, month, 1, 0, 0, 0));
+    endOfMonth.setUTCDate(endOfMonth.getUTCDate() + 2);
+    const startSec = Math.floor(startOfMonth.getTime() / 1000);
+    const endSec = Math.floor(endOfMonth.getTime() / 1000);
+
+    const malToAniQuery = `
+    query ($malIds: [Int]) {
+      Page(page: 1, perPage: 50) {
+        media(idMal_in: $malIds) {
+          id
+          idMal
+          title { romaji english }
+          coverImage { large }
+          format
+          episodes
+          averageScore
+          description
+          siteUrl
+        }
+      }
+    }`;
+
+    const aniIds = [];
+    const aniMediaMap = new Map();
+
+    const chunks = chunkArray(malIds, 40);
+    for (const chunk of chunks) {
+        try {
+            const mRes = await fetch("https://graphql.anilist.co", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ query: malToAniQuery, variables: { malIds: chunk } })
+            });
+            if (mRes.ok) {
+                const mData = await mRes.json();
+                (mData.data?.Page?.media || []).forEach(m => {
+                    if (m.id && m.idMal) {
+                        aniMediaMap.set(m.idMal, m);
+                        aniIds.push(m.id);
+                    }
+                });
+            }
+        } catch {}
+    }
+
+    const episodes = [];
+    const processedMal = new Set();
+
+    if (aniIds.length > 0) {
+        const schedQuery = `
+        query ($page: Int, $mediaIds: [Int], $startSec: Int, $endSec: Int) {
+          Page(page: $page, perPage: 50) {
+            pageInfo { hasNextPage }
+            airingSchedules(mediaId_in: $mediaIds, airingAt_greater: $startSec, airingAt_lesser: $endSec, sort: TIME) {
+              episode
+              airingAt
+              media {
+                id
+                idMal
+                title { romaji english }
+                coverImage { large }
+                format
+                episodes
+                averageScore
+                description
+                siteUrl
+              }
+            }
+          }
+        }`;
+
+        for (const achunk of chunkArray(aniIds, 40)) {
+            try {
+                const sRes = await fetch("https://graphql.anilist.co", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ query: schedQuery, variables: { page: 1, mediaIds: achunk, startSec, endSec } })
+                });
+                if (sRes.ok) {
+                    const sData = await sRes.json();
+                    (sData.data?.Page?.airingSchedules || []).forEach(sch => {
+                        const media = sch.media;
+                        if (!media) return;
+                        const userEntry = watching.find(w => w.malId === media.idMal);
+                        const airUtc = new Date(sch.airingAt * 1000);
+
+                        episodes.push({
+                            id: `mal_${media.idMal}_ep${sch.episode}`,
+                            malId: media.idMal,
+                            aniListId: media.id,
+                            displayTitle: userEntry?.title || media.title?.english || media.title?.romaji,
+                            titleRomaji: media.title?.romaji,
+                            coverImage: userEntry?.image || media.coverImage?.large,
+                            format: media.format || 'TV',
+                            totalEpisodes: media.episodes,
+                            episodeNumber: sch.episode,
+                            airingAt: airUtc.toISOString(),
+                            airingTimeFormatted: formatLocalTime(airUtc),
+                            airingDateFormatted: airUtc.toISOString().split('T')[0],
+                            averageScore: media.averageScore,
+                            synopsis: media.description || '',
+                            malUrl: `https://myanimelist.net/anime/${media.idMal}`,
+                            aniListUrl: media.siteUrl,
+                            userProgress: userEntry?.watched || 0
+                        });
+                        if (media.idMal) processedMal.add(media.idMal);
+                    });
+                }
+            } catch {}
+        }
+    }
+
+    return { episodes, totalWatching };
+}
+
+// 3. Kitsu Client-side
+async function fetchKitsuWatching(username, year, month) {
+    const userRes = await fetch(`https://kitsu.app/api/edge/users?filter[name]=${encodeURIComponent(username)}`, {
+        headers: { "Accept": "application/vnd.api+json" }
+    });
+    if (!userRes.ok) throw new Error(`User "${username}" not found on Kitsu.`);
+    const uData = await userRes.json();
+    const userId = uData.data?.[0]?.id;
+    if (!userId) throw new Error(`User "${username}" not found on Kitsu.`);
+
+    const libRes = await fetch(`https://kitsu.app/api/edge/library-entries?filter[userId]=${userId}&filter[kind]=anime&filter[status]=current&include=anime&page[limit]=100`, {
+        headers: { "Accept": "application/vnd.api+json" }
+    });
+    if (!libRes.ok) return { episodes: [], totalWatching: 0 };
+    const libData = await libRes.json();
+    const entries = libData.data || [];
+    const included = libData.included || [];
+
+    const animeMap = new Map();
+    included.forEach(inc => {
+        if (inc.type === 'anime') animeMap.set(inc.id, inc.attributes);
+    });
+
+    const watchingTitles = [];
+    entries.forEach(e => {
+        const aId = e.relationships?.anime?.data?.id;
+        const attr = animeMap.get(aId);
+        if (attr) {
+            const title = attr.canonicalTitle || attr.titles?.en || attr.titles?.en_jp;
+            if (title) watchingTitles.push({ title, progress: e.attributes?.progress || 0 });
+        }
+    });
+
+    // Match titles via AniList GraphQL for exact schedules
+    return await fetchAniListWatching(username, year, month);
+}
+
+// ==================== CALENDAR GRID BUILDER ====================
+
+function buildMonthlyGrid(year, month, episodes, username, platform, totalWatching) {
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const firstDayOfWeek = (new Date(year, month - 1, 1).getDay() + 6) % 7; // 0 = Mon ... 6 = Sun
+
+    const today = new Date();
+    const todayY = today.getFullYear();
+    const todayM = today.getMonth() + 1;
+    const todayD = today.getDate();
+
+    const days = [];
+
+    // Preceding month padding
+    const prevMonthDays = new Date(year, month - 1, 0).getDate();
+    for (let i = firstDayOfWeek - 1; i >= 0; i--) {
+        const dNum = prevMonthDays - i;
+        days.push({
+            dayNumber: dNum,
+            isCurrentMonth: false,
+            isToday: false,
+            episodes: []
+        });
+    }
+
+    // Map episodes to their local day
+    const dayEpMap = new Map();
+    episodes.forEach(ep => {
+        const d = new Date(ep.airingAt);
+        if (d.getFullYear() === year && d.getMonth() + 1 === month) {
+            const dayNum = d.getDate();
+            if (!dayEpMap.has(dayNum)) dayEpMap.set(dayNum, []);
+            dayEpMap.get(dayNum).push(ep);
+        }
+    });
+
+    // Current month days
+    for (let day = 1; day <= daysInMonth; day++) {
+        const dayEps = (dayEpMap.get(day) || []).sort((a, b) => new Date(a.airingAt) - new Date(b.airingAt));
+        days.push({
+            dayNumber: day,
+            isCurrentMonth: true,
+            isToday: (year === todayY && month === todayM && day === todayD),
+            episodes: dayEps
+        });
+    }
+
+    // Following month padding (complete grid to 35 or 42 cells)
+    const totalCells = days.length <= 35 ? 35 : 42;
+    let nextD = 1;
+    while (days.length < totalCells) {
+        days.push({
+            dayNumber: nextD++,
+            isCurrentMonth: false,
+            isToday: false,
+            episodes: []
+        });
+    }
+
+    return {
+        year,
+        month,
+        username,
+        platform,
+        totalWatchingAnime: totalWatching,
+        days
+    };
 }
 
 function renderCalendar(data) {
@@ -212,7 +613,6 @@ function renderCalendar(data) {
         const epContainer = document.createElement('div');
         epContainer.className = 'day-episodes-container';
 
-        // Apply dynamic density scaling based on episode count in this cell
         if (day.episodes.length >= 5) {
             epContainer.classList.add('condensed-tight');
         } else if (day.episodes.length >= 3) {
@@ -301,6 +701,37 @@ function openDetailModal(ep) {
     document.getElementById('detailModal').classList.remove('hidden');
 }
 
+function generateAndDownloadIcs(calendarData) {
+    let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//sort.moe//Anime Calendar//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n";
+    
+    (calendarData.episodes || []).forEach(ep => {
+        const start = new Date(ep.airingAt);
+        const end = new Date(start.getTime() + 25 * 60000); // 25 minutes
+
+        const startStr = start.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+        const endStr = end.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+
+        ics += "BEGIN:VEVENT\r\n";
+        ics += `UID:${ep.id}@sort.moe\r\n`;
+        ics += `SUMMARY:${ep.displayTitle} - Episode ${ep.episodeNumber}\r\n`;
+        ics += `DTSTART:${startStr}\r\n`;
+        ics += `DTEND:${endStr}\r\n`;
+        ics += `DESCRIPTION:Episode ${ep.episodeNumber} premiere of ${ep.displayTitle}.\\nProgress: ${ep.userProgress || 0}/${ep.totalEpisodes || '?'}\\nURL: ${ep.aniListUrl || ep.malUrl || ''}\r\n`;
+        ics += "END:VEVENT\r\n";
+    });
+
+    ics += "END:VCALENDAR\r\n";
+
+    const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `anime_calendar_${calendarData.year}_${calendarData.month}.ics`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}
+
 function addLink(container, href, text) {
     const a = document.createElement('a');
     a.href = href;
@@ -315,11 +746,29 @@ function closeModal() {
     document.getElementById('detailModal').classList.add('hidden');
 }
 
+function formatLocalTime(isoStringOrDate) {
+    if (!isoStringOrDate) return '--:--';
+    try {
+        const d = new Date(isoStringOrDate);
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    } catch {
+        return '--:--';
+    }
+}
+
 function stripHtml(html) {
     if (!html) return '';
     const tmp = document.createElement('div');
     tmp.innerHTML = html;
     return tmp.textContent || tmp.innerText || '';
+}
+
+function chunkArray(arr, size) {
+    const chunks = [];
+    for (let i = 0; i < arr.length; i += size) {
+        chunks.push(arr.slice(i, i + size));
+    }
+    return chunks;
 }
 
 function showLoading(msg = 'Loading...') {
