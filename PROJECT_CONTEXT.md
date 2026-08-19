@@ -1,45 +1,39 @@
 # PROJECT_CONTEXT.md — anime-sorter (sort.moe) & livechart-anime-tracker
 
 ## 1. Ecosystem Overview
-* **Primary App:** `anime-sorter` (Live: [https://sort.moe/](https://sort.moe/)) — Interactive pairwise merge-ranking anime tool.
-* **Companion App:** `livechart-anime-tracker` (Live: [https://livechart-anime-tracker.onrender.com/](https://livechart-anime-tracker.onrender.com/)) — Full-screen monthly anime watching calendar with exact LiveChart broadcasting schedules powered by .NET 8 + `Tenrai.Net 3.1.0`.
+* **Primary App:** `anime-sorter` (Live: [https://sort.moe/](https://sort.moe/)) — Interactive pairwise merge-ranking anime sorting tool.
+* **Companion App:** `livechart-anime-tracker` (Live: [https://sort.moe/calendar/](https://sort.moe/calendar/) & [https://livechart-anime-tracker.onrender.com/](https://livechart-anime-tracker.onrender.com/)) — Full-screen monthly anime release calendar with exact LiveChart broadcasting schedules powered by .NET 8 backend and GitHub Pages frontend.
 * **Author / GitHub:** `wooles` ([https://github.com/wooles](https://github.com/wooles))
-  * Sorter Repo: `https://github.com/wooles/anime-sorter.git`
-  * Calendar Repo: `https://github.com/wooles/livechart-anime-tracker.git`
+  * Sorter & Calendar Web Repo: `https://github.com/wooles/anime-sorter.git` (GitHub Pages at `sort.moe` and `sort.moe/calendar/`)
+  * Calendar Backend Repo: `https://github.com/wooles/livechart-anime-tracker.git` (Render at `livechart-anime-tracker.onrender.com`)
 
 ---
 
 ## 2. Multi-Project Architecture
-* **anime-sorter (`C:\Users\Piotrek\Desktop\sorter`)**:
-  * **Frontend:** Standalone HTML5 / CSS3 / Vanilla JS SPA.
-  * **Storage:** Browser `localStorage` (caching metadata/covers, persisting list items, language, and theme).
-  * **Integrations:** Watchlist import (AniList, Kitsu, MyAnimeList XML/API), pairwise merge sort, ties, season picker, Litterbox export, direct navigation button to Calendar (`https://livechart-anime-tracker.onrender.com/`).
+* **anime-sorter & calendar frontend (`C:\Users\Piotrek\Desktop\sorter`)**:
+  * **Root (`/`):** Anime Sorter (HTML5 / CSS3 / Vanilla JS SPA) — Watchlist import (AniList, Kitsu, MyAnimeList XML/API), pairwise merge sort, season picker, Litterbox export, direct navigation to `/calendar`.
+  * **Subfolder (`/calendar`):** Anime Calendar frontend — Weekly 7-day timeline view, 0ms instant local cache restoration, dark/light theme, English/Romaji title switcher, 24h European time format, timezone autodetection, .ics export.
 * **livechart-anime-tracker (`C:\Users\Piotrek\Desktop\kalendarz`)**:
-  * **Backend:** .NET 8 Minimal API (C#) using **Tenrai.Net 3.1.0** and **Ical.Net 4.3.1**.
+  * **Backend:** .NET 8 Minimal API (C#) using **Tenrai.Net**, **AniList GraphQL**, **Kitsu JSON:API**, and **Ical.Net**.
   * **Cloud Deployment:** Hosted on Render.com (`Dockerfile` + `render.yaml`) with dynamic port binding.
-  * **Features:** 7-column calendar (Mon-Sun), minute-accurate LiveChart schedules, timezone conversion (`Europe/Warsaw`), watching list exclusivity, `.ics` exports, direct navigation button to Sorter (`https://sort.moe`).
+  * **Performance:** Single-query batch GraphQL paring (sub-second response <1s), in-memory caching, season cap safeguards, hiatus/delay tracking.
 
 ---
 
 ## 3. Workflow Trigger & Auto-Onboarding Rule ("kontynuuj anisort")
-Whenever the user types `"kontynuuj"`, `"kontynuuj anisort"`, `"kontynuuj kalendarz"`, or similar in any session:
-1. **Recognize Dual-Project Scope:** Immediately recognize that the user is working on both `anime-sorter` and `livechart-anime-tracker`.
+Whenever the user types `"kontynuuj"`, `"kontynuuj anisort"`, `"kontynuuj kalendarz"`, or similar in ANY session or on a new machine:
+1. **Dual-Project Scope:** Immediately recognize that the user is working on both `anime-sorter` (`sort.moe`) and `livechart-anime-tracker` (`kalendarz`).
 2. **Synchronize Git Repositories:**
-   * In `C:\Users\Piotrek\Desktop\sorter`: check if `.git` exists, clone if missing (`git clone https://github.com/wooles/anime-sorter.git .`), or pull latest (`git pull origin main`).
-   * In `C:\Users\Piotrek\Desktop\kalendarz`: check if `.git` exists, clone if missing (`git clone https://github.com/wooles/livechart-anime-tracker.git .`), or pull latest (`git pull origin main`).
-3. **Execute Dependency & Workspace Setup:**
-   * Run `.\setup.ps1` to restore .NET SDK packages (`dotnet restore` for `LiveChartTracker.csproj` + `Tenrai.Net 3.1.0` and `MalProxy.csproj`).
-   * Verify Python, Git, and .NET environment tools.
-   * Ensure `.vscode/` configurations (extensions recommendations and editor settings) are populated in both directories.
-4. **Verify Live Endpoints & Bindings:**
-   * Sorter (`sort.moe`) ➔ Calendar (`https://livechart-anime-tracker.onrender.com/`)
-   * Calendar ➔ Sorter (`https://sort.moe/`)
-5. **Report Complete Readiness:** Provide a concise status summary to the user confirming both repositories are synced, packages restored, and ready for work.
+   * In `sorter`: verify `git pull origin main`.
+   * In `kalendarz`: verify `git pull origin main`.
+3. **Build & Validate:**
+   * Run `dotnet build LiveChartTracker.csproj` to ensure all .NET dependencies and packages compile cleanly.
+4. **Report Readiness:** Provide a concise status summary confirming both repositories are synchronized and ready to continue immediately without asking the user for re-explanations.
 
 ---
 
-## 4. Coding & Modification Guidelines
-* **Complete Code Only:** Always maintain and deliver complete files without placeholders or omission comments.
-* **List Reset Behavior in Sorter:** Any new import or manual add action must clear existing entries (`entries = []`) to prevent duplicate bloat.
-* **Tenrai.Net Integrity:** Preserve `Tenrai.Net` package integration for MyAnimeList interactions in the .NET backend.
-* **Port Compatibility:** Always bind to dynamic `$PORT` environment variable (`Environment.GetEnvironmentVariable("PORT") ?? "5000"`) for cloud hosting.
+## 4. Key Guidelines & Technical Conventions
+* **Always Deliver Complete Code:** No placeholder snippets or omitted lines.
+* **Dual Repository Sync:** Any frontend changes in `kalendarz/wwwroot/` should be synchronized with `sorter/calendar/` so both GitHub Pages (`sort.moe/calendar`) and the Render standalone view remain identical.
+* **Preserve Dynamic Port Binding:** Always bind backend to `Environment.GetEnvironmentVariable("PORT") ?? "5000"`.
+* **Zero Layout Shifts:** Keep tabular numbers (`font-variant-numeric: tabular-nums`) and fixed min-widths on time badges.
