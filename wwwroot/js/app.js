@@ -489,10 +489,8 @@ function getCountdownInfo(airingAt) {
         } else {
             return { text: `${mins}m`, statusClass: '' };
         }
-    } else if (diffSec > -3600) {
-        return { text: 'Airing Now', statusClass: 'live' };
     } else {
-        return { text: 'Aired', statusClass: 'aired' };
+        return { text: '', statusClass: '' };
     }
 }
 

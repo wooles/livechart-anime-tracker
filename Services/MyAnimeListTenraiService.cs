@@ -121,7 +121,7 @@ query ($page: Int, $malIds: [Int]) {
     pageInfo {
       hasNextPage
     }
-    media(idMal_in: $malIds) {
+    media(idMal_in: $malIds, type: ANIME) {
       id
       idMal
       title {
@@ -389,8 +389,8 @@ query ($page: Int, $perPage: Int, $mediaIds: [Int], $startSec: Int, $endSec: Int
                 if (start > monthEnd) continue;
                 if (item.endDate.HasValue && item.endDate.Value < monthStart) continue;
 
-                // Handle single release media (Movies / Specials)
-                if (item.mediaType == "Movie" || item.mediaType == "Special")
+                // Handle single release media (Movies / Specials / OVAs / ONAs without weekly schedules)
+                if (item.mediaType == "Movie" || item.mediaType == "Special" || item.mediaType == "OVA")
                 {
                     if (item.startDate.HasValue && item.startDate.Value >= monthStart && item.startDate.Value <= monthEnd)
                     {
@@ -403,7 +403,7 @@ query ($page: Int, $perPage: Int, $mediaIds: [Int], $startSec: Int, $endSec: Int
                             TitleRomaji = item.title,
                             CoverImage = item.img,
                             Format = item.mediaType,
-                            TotalEpisodes = 1,
+                            TotalEpisodes = item.totalEp > 0 ? item.totalEp : 1,
                             EpisodeNumber = 1,
                             AiringAt = airUtc,
                             AiringTimeFormatted = airUtc.ToString("HH:mm"),
@@ -421,20 +421,19 @@ query ($page: Int, $perPage: Int, $mediaIds: [Int], $startSec: Int, $endSec: Int
                 }
 
                 DayOfWeek airDay = start.DayOfWeek;
-                int hourJst = 23 + ((item.malId % 5) / 2);
-                int minJst = (item.malId % 2 == 0) ? 0 : 30;
-                int hourUtc = (hourJst - 9 + 24) % 24;
+                int hourUtc = 14; // Standard 16:00 Polish Time
+                int minUtc = (item.malId % 2 == 0) ? 0 : 30;
 
                 for (int day = 1; day <= daysInMonth; day++)
                 {
-                    var currentDate = new DateTime(year, month, day, hourUtc, minJst, 0, DateTimeKind.Utc);
+                    var currentDate = new DateTime(year, month, day, hourUtc, minUtc, 0, DateTimeKind.Utc);
                     if (item.startDate.HasValue && currentDate < item.startDate.Value.Date) continue;
                     if (item.endDate.HasValue && currentDate > item.endDate.Value.Date.AddDays(1)) continue;
 
                     if (currentDate.DayOfWeek == airDay)
                     {
                         int weeksDiff = (int)Math.Max(1, Math.Ceiling((currentDate - start).TotalDays / 7.0));
-                        int epNumber = Math.Min(item.totalEp > 0 ? item.totalEp : 999, Math.Max(1, item.watched > 0 ? item.watched + (weeksDiff > 0 ? weeksDiff % 12 : 1) : weeksDiff));
+                        int epNumber = Math.Min(item.totalEp > 0 ? item.totalEp : 999, weeksDiff);
 
                         var airUtc = new DateTimeOffset(currentDate, TimeSpan.Zero);
 
@@ -466,20 +465,54 @@ query ($page: Int, $perPage: Int, $mediaIds: [Int], $startSec: Int, $endSec: Int
             return (avatarUrl, episodes.OrderBy(e => e.AiringAt).ToList(), totalWatching);
         }
 
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTimeOffset cachedAt, JsonNode? data)> _malGqlCache = new();
+
         private async Task<JsonNode?> ExecuteGraphQLAsync(string query, object variables)
         {
+            var cacheKey = $"{query.GetHashCode()}_{JsonSerializer.Serialize(variables)}";
+            if (_malGqlCache.TryGetValue(cacheKey, out var entry) && DateTimeOffset.UtcNow - entry.cachedAt < TimeSpan.FromMinutes(15))
+            {
+                return entry.data;
+            }
+
             var payload = new
             {
                 query = query,
                 variables = variables
             };
 
-            var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-            var response = await _httpClient.PostAsync(GraphQlEndpoint, content);
-            if (!response.IsSuccessStatusCode) return null;
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                try
+                {
+                    var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                    var response = await _httpClient.PostAsync(GraphQlEndpoint, content);
 
-            var jsonString = await response.Content.ReadAsStringAsync();
-            return JsonNode.Parse(jsonString);
+                    if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                    {
+                        var retryAfter = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(1.5 * (attempt + 1));
+                        await Task.Delay(retryAfter);
+                        continue;
+                    }
+
+                    if (!response.IsSuccessStatusCode) return null;
+
+                    var jsonString = await response.Content.ReadAsStringAsync();
+                    var node = JsonNode.Parse(jsonString);
+                    if (node != null)
+                    {
+                        _malGqlCache[cacheKey] = (DateTimeOffset.UtcNow, node);
+                    }
+                    return node;
+                }
+                catch
+                {
+                    if (attempt == 2) return null;
+                    await Task.Delay(1000);
+                }
+            }
+
+            return null;
         }
 
         private static DateTime? ParseMalDate(string? dateStr)
