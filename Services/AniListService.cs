@@ -92,9 +92,18 @@ query ($userName: String) {
 }";
 
             var userRes = await ExecuteGraphQLAsync(userQuery, new { userName = username });
-            if (userRes == null || userRes["data"] == null || userRes["data"]?["User"] == null)
+            if (userRes == null)
             {
-                throw new Exception($"User {username} not found on AniList.");
+                throw new Exception($"AniList service is currently busy or rate-limited. Please wait a few seconds and try again.");
+            }
+            if (userRes["data"]?["User"] == null)
+            {
+                var errMsg = userRes["errors"]?[0]?["message"]?.ToString();
+                if (!string.IsNullOrWhiteSpace(errMsg))
+                {
+                    throw new Exception($"AniList: {errMsg}");
+                }
+                throw new Exception($"User '{username}' was not found on AniList.");
             }
 
             var avatarUrl = userRes["data"]?["User"]?["avatar"]?["large"]?.ToString();
