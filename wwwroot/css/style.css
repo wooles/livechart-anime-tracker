@@ -751,13 +751,21 @@ html, body {
 }
 
 .streaming-btn.nyaa {
-    background: #234d79;
-    border-color: #3b82f6;
+    background: #007bff;
+    border-color: #0069d9;
     color: #ffffff;
 }
 
 .streaming-btn.nyaa:hover {
-    background: #2d6199;
+    background: #0069d9;
+}
+
+.nyaa-icon {
+    width: 16px;
+    height: 16px;
+    object-fit: cover;
+    border-radius: 3px;
+    flex-shrink: 0;
 }
 
 .streaming-btn.search-fallback {
