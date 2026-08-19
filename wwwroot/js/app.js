@@ -1,4 +1,4 @@
-﻿// LiveChart Anime Watching Calendar - sort.moe/calendar
+// LiveChart Anime Watching Calendar - sort.moe/calendar
 
 const BACKEND_API_URL = 'https://livechart-anime-tracker.onrender.com';
 
@@ -206,8 +206,10 @@ async function handleMalXmlFile(event) {
 async function fetchCalendar() {
     showLoading(`Loading anime calendar from ${state.platform} for ${state.username}...`);
     try {
-        // 1. Direct query to live .NET 8 + Tenrai.Net backend (Render.com / Local)
-        const primaryUrl = `${BACKEND_API_URL}/api/calendar/month?platform=${encodeURIComponent(state.platform)}&username=${encodeURIComponent(state.username)}&year=${state.year}&month=${state.month}`;
+        // Detect if already running on Render or localhost
+        const isSameOrigin = window.location.origin.includes('onrender.com') || window.location.origin.includes('localhost:5000');
+        const apiBase = isSameOrigin ? '' : BACKEND_API_URL;
+        const primaryUrl = `${apiBase}/api/calendar/month?platform=${encodeURIComponent(state.platform)}&username=${encodeURIComponent(state.username)}&year=${state.year}&month=${state.month}`;
         
         try {
             const apiRes = await fetch(primaryUrl);
@@ -216,9 +218,18 @@ async function fetchCalendar() {
                 state.calendarData = apiData;
                 renderCalendar(apiData);
                 return;
+            } else {
+                const errData = await apiRes.json().catch(() => ({}));
+                if (errData && errData.error) {
+                    throw new Error(errData.error);
+                }
+                throw new Error(`Server returned status ${apiRes.status}`);
             }
         } catch (netErr) {
-            console.warn("Cloud backend unreachable, trying direct browser query:", netErr);
+            if (netErr.message && !netErr.message.includes('fetch') && !netErr.message.includes('NetworkError') && !netErr.message.includes('Failed to fetch')) {
+                throw netErr;
+            }
+            console.warn("Backend unreachable, trying direct client query:", netErr);
         }
 
         // 2. Client-side fallback for AniList and Kitsu
@@ -234,7 +245,7 @@ async function fetchCalendar() {
             episodes = res.episodes;
             totalWatching = res.totalWatching;
         } else {
-            throw new Error(`Could not connect to backend server at ${BACKEND_API_URL}. Please check your connection or try again.`);
+            throw new Error(`Could not connect to backend server at ${BACKEND_API_URL}. The server may be waking up from free-tier sleep (takes ~30s). Please try again in a few seconds.`);
         }
 
         const gridData = buildMonthlyGrid(state.year, state.month, episodes, state.username, state.platform, totalWatching);

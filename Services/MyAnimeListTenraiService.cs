@@ -51,7 +51,15 @@ namespace LiveChartTracker.Services
                 var response = await _httpClient.SendAsync(req);
                 if (!response.IsSuccessStatusCode)
                 {
-                    throw new Exception($"Failed to fetch MyAnimeList for user {username}. Please ensure the watchlist is public on MyAnimeList.");
+                    if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                    {
+                        throw new Exception($"User '{username}' was not found on MyAnimeList.");
+                    }
+                    if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                    {
+                        throw new Exception($"Anime list for user '{username}' is private. Please make it public in MyAnimeList privacy settings.");
+                    }
+                    throw new Exception($"Could not load MyAnimeList for user '{username}' (Status: {(int)response.StatusCode}). Please ensure the username is correct and the list is public.");
                 }
 
                 var jsonStr = await response.Content.ReadAsStringAsync();
