@@ -653,7 +653,7 @@ function openDetailModal(ep) {
     
     const airDate = new Date(ep.airingAt);
     const tzName = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local';
-    document.getElementById('modalAirTime').textContent = airDate.toLocaleString([], { 
+    document.getElementById('modalAirTime').textContent = airDate.toLocaleString('en-US', { 
         weekday: 'long', 
         month: 'long', 
         day: 'numeric', 
