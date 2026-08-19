@@ -482,20 +482,53 @@ query ($page: Int, $season: MediaSeason, $seasonYear: Int) {
             return ("https://sort.moe/favicon.ico", episodesList.OrderBy(e => e.AiringAt).ToList(), mediaList.Count);
         }
 
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTimeOffset cachedAt, JsonNode? data)> _gqlCache = new();
+
         private async Task<JsonNode?> ExecuteGraphQLAsync(string query, object variables)
         {
+            var cacheKey = $"{query.GetHashCode()}_{JsonSerializer.Serialize(variables)}";
+            if (_gqlCache.TryGetValue(cacheKey, out var entry) && DateTimeOffset.UtcNow - entry.cachedAt < TimeSpan.FromMinutes(15))
+            {
+                return entry.data;
+            }
+
             var payload = new
             {
                 query = query,
                 variables = variables
             };
 
-            var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-            var response = await _httpClient.PostAsync(GraphQlEndpoint, content);
-            response.EnsureSuccessStatusCode();
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                try
+                {
+                    var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                    var response = await _httpClient.PostAsync(GraphQlEndpoint, content);
 
-            var jsonString = await response.Content.ReadAsStringAsync();
-            return JsonNode.Parse(jsonString);
+                    if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                    {
+                        await Task.Delay(1500 * (attempt + 1));
+                        continue;
+                    }
+
+                    if (!response.IsSuccessStatusCode) return null;
+
+                    var jsonString = await response.Content.ReadAsStringAsync();
+                    var node = JsonNode.Parse(jsonString);
+                    if (node != null)
+                    {
+                        _gqlCache[cacheKey] = (DateTimeOffset.UtcNow, node);
+                    }
+                    return node;
+                }
+                catch
+                {
+                    if (attempt == 2) return null;
+                    await Task.Delay(1000);
+                }
+            }
+
+            return null;
         }
     }
 }
