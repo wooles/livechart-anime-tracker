@@ -40,9 +40,10 @@ namespace LiveChartTracker.Services
 
             int[] statusesToFetch = new[] { 1, 6 }; // 1 = Watching, 6 = Plan to Watch
 
-            foreach (var statusVal in statusesToFetch)
+            var statusTasks = statusesToFetch.Select(async statusVal =>
             {
                 string statusName = statusVal == 1 ? "Watching" : "PlanToWatch";
+                var list = new List<(int malId, string title, string img, int watched, int totalEp, double score, string mediaType, int airingStatus, DateTime? startDate, DateTime? endDate, string listStatus)>();
                 int offset = 0;
                 const int limit = 300;
                 bool hasMore = true;
@@ -86,12 +87,19 @@ namespace LiveChartTracker.Services
                         DateTime? start = ParseMalDate(item["anime_start_date_string"]?.ToString());
                         DateTime? end = ParseMalDate(item["anime_end_date_string"]?.ToString());
 
-                        watchingList.Add((malId, title, img, watched, totalEp, score > 0 ? score * 10 : 0, mediaType, airingStatus, start, end, statusName));
+                        list.Add((malId, title, img, watched, totalEp, score > 0 ? score * 10 : 0, mediaType, airingStatus, start, end, statusName));
                     }
 
                     if (array.Count < limit) hasMore = false;
                     else offset += limit;
                 }
+                return list;
+            });
+
+            var results = await Task.WhenAll(statusTasks);
+            foreach (var res in results)
+            {
+                watchingList.AddRange(res);
             }
 
             int totalWatching = watchingList.Count;
@@ -161,8 +169,9 @@ query ($page: Int, $malIds: [Int]) {
                 var malChunks = malIds.Chunk(50).ToList();
                 var aniMediaMap = new Dictionary<int, JsonNode>(); // malId -> mediaNode
 
-                foreach (var chunk in malChunks)
+                var chunkTasks = malChunks.Select(async chunk =>
                 {
+                    var chunkMediaList = new List<JsonNode>();
                     int aniPage = 1;
                     bool hasMoreMedia = true;
 
@@ -178,21 +187,31 @@ query ($page: Int, $malIds: [Int]) {
                         {
                             foreach (var m in mediaList)
                             {
-                                int mId = m?["id"]?.GetValue<int>() ?? 0;
-                                int? malId = m?["idMal"]?.GetValue<int?>();
-                                if (mId > 0 && malId.HasValue && m != null)
-                                {
-                                    if (!aniMediaMap.TryGetValue(malId.Value, out var existing) ||
-                                        (m["nextAiringEpisode"] != null && existing["nextAiringEpisode"] == null) ||
-                                        (m["status"]?.ToString() == "RELEASING" && existing["status"]?.ToString() != "RELEASING"))
-                                    {
-                                        aniMediaMap[malId.Value] = m;
-                                    }
-                                }
+                                if (m != null) chunkMediaList.Add(m);
                             }
                         }
 
                         aniPage++;
+                    }
+                    return chunkMediaList;
+                });
+
+                var allChunkResults = await Task.WhenAll(chunkTasks);
+                foreach (var mediaList in allChunkResults)
+                {
+                    foreach (var m in mediaList)
+                    {
+                        int mId = m?["id"]?.GetValue<int>() ?? 0;
+                        int? malId = m?["idMal"]?.GetValue<int?>();
+                        if (mId > 0 && malId.HasValue && m != null)
+                        {
+                            if (!aniMediaMap.TryGetValue(malId.Value, out var existing) ||
+                                (m["nextAiringEpisode"] != null && existing["nextAiringEpisode"] == null) ||
+                                (m["status"]?.ToString() == "RELEASING" && existing["status"]?.ToString() != "RELEASING"))
+                            {
+                                aniMediaMap[malId.Value] = m;
+                            }
+                        }
                     }
                 }
 

@@ -49,7 +49,7 @@ namespace LiveChartTracker.Services
         public async Task<MonthlyCalendarResponse> GetMonthlyCalendarAsync(string platform, string username, int year, int month, bool refresh = false)
         {
             var cacheKey = $"{platform.ToLowerInvariant()}_{username.ToLowerInvariant()}_{year}_{month}";
-            if (!refresh && _cache.TryGetValue(cacheKey, out var cached) && DateTimeOffset.UtcNow - cached.cachedAt < TimeSpan.FromMinutes(5))
+            if (!refresh && _cache.TryGetValue(cacheKey, out var cached) && DateTimeOffset.UtcNow - cached.cachedAt < TimeSpan.FromMinutes(15))
             {
                 return cached.data;
             }

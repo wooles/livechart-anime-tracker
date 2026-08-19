@@ -79,6 +79,15 @@ function restoreLocalCache() {
             if (parsed && Array.isArray(parsed.episodes) && parsed.episodes.length > 0) {
                 state.allEpisodes = parsed.episodes;
                 state.loadedMonths = new Set(parsed.loadedMonths || []);
+                if (parsed.calendarData) {
+                    state.calendarData = parsed.calendarData;
+                } else {
+                    state.calendarData = {
+                        username: savedUser,
+                        platform: savedPlat,
+                        totalWatchingAnime: parsed.episodes.length
+                    };
+                }
                 renderSchedule();
             }
         }
@@ -94,6 +103,7 @@ function saveLocalCache() {
         localStorage.setItem(cacheKey, JSON.stringify({
             episodes: state.allEpisodes,
             loadedMonths: Array.from(state.loadedMonths),
+            calendarData: state.calendarData,
             time: Date.now()
         }));
     } catch (e) {
@@ -241,7 +251,7 @@ async function handleLoadCalendar(showSpinner = true) {
         state.allEpisodes = [];
         state.loadedMonths.clear();
         showLoading(`Loading anime schedule for ${state.username} (${state.platform})...`);
-    } else if (state.allEpisodes.length === 0) {
+    } else {
         restoreLocalCache();
     }
 
@@ -249,12 +259,16 @@ async function handleLoadCalendar(showSpinner = true) {
         const y = state.startDate.getFullYear();
         const m = state.startDate.getMonth() + 1;
         
-        // Fetch current month + next month for seamless navigation
-        await fetchMonthData(y, m, false, true);
-        
         const nextMonthDate = new Date(state.startDate);
         nextMonthDate.setMonth(nextMonthDate.getMonth() + 1);
-        await fetchMonthData(nextMonthDate.getFullYear(), nextMonthDate.getMonth() + 1, false, true);
+        const nextY = nextMonthDate.getFullYear();
+        const nextM = nextMonthDate.getMonth() + 1;
+
+        // Fetch current month + next month concurrently in parallel
+        await Promise.all([
+            fetchMonthData(y, m, false, showSpinner),
+            fetchMonthData(nextY, nextM, false, showSpinner)
+        ]);
 
         renderSchedule();
         saveLocalCache();
@@ -325,13 +339,14 @@ function renderSchedule() {
     document.getElementById('initialState').classList.add('hidden');
     grid.classList.remove('hidden');
 
-    // Update Stats Bar
-    if (state.calendarData) {
-        const statsBar = document.getElementById('calendarStats');
+    // Update Stats Bar instantly
+    const statsBar = document.getElementById('calendarStats');
+    if (statsBar) {
         statsBar.classList.remove('hidden');
-        document.getElementById('statsUsername').textContent = state.username;
-        document.getElementById('statsPlatform').textContent = state.platform;
-        document.getElementById('statsWatchingCount').textContent = state.calendarData.totalWatchingAnime || state.allEpisodes.length;
+        document.getElementById('statsUsername').textContent = state.username || 'wooles';
+        document.getElementById('statsPlatform').textContent = state.platform || 'MyAnimeList';
+        const count = state.calendarData?.totalWatchingAnime || state.allEpisodes.length || 0;
+        document.getElementById('statsWatchingCount').textContent = count;
         
         const tzName = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local';
         const tzBadge = document.getElementById('timezoneBadge');
