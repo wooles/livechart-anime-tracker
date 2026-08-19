@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
@@ -10,7 +10,7 @@ namespace LiveChartTracker.Services
 {
     public interface IAnimeAggregationService
     {
-        Task<MonthlyCalendarResponse> GetMonthlyCalendarAsync(string platform, string username, int year, int month);
+        Task<MonthlyCalendarResponse> GetMonthlyCalendarAsync(string platform, string username, int year, int month, bool refresh = false);
         Task<string> ExportCalendarIcsAsync(string platform, string username, int year, int month, int reminderMinutes = 15);
     }
 
@@ -46,10 +46,10 @@ namespace LiveChartTracker.Services
             _calendarExportService = calendarExportService;
         }
 
-        public async Task<MonthlyCalendarResponse> GetMonthlyCalendarAsync(string platform, string username, int year, int month)
+        public async Task<MonthlyCalendarResponse> GetMonthlyCalendarAsync(string platform, string username, int year, int month, bool refresh = false)
         {
             var cacheKey = $"{platform.ToLowerInvariant()}_{username.ToLowerInvariant()}_{year}_{month}";
-            if (_cache.TryGetValue(cacheKey, out var cached) && DateTimeOffset.UtcNow - cached.cachedAt < TimeSpan.FromMinutes(10))
+            if (!refresh && _cache.TryGetValue(cacheKey, out var cached) && DateTimeOffset.UtcNow - cached.cachedAt < TimeSpan.FromMinutes(5))
             {
                 return cached.data;
             }

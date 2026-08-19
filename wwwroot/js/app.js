@@ -145,11 +145,11 @@ async function handleLoadCalendar() {
         const m = state.startDate.getMonth() + 1;
         
         // Fetch current month + next month for seamless navigation
-        await fetchMonthData(y, m, false);
+        await fetchMonthData(y, m, false, true);
         
         const nextMonthDate = new Date(state.startDate);
         nextMonthDate.setMonth(nextMonthDate.getMonth() + 1);
-        await fetchMonthData(nextMonthDate.getFullYear(), nextMonthDate.getMonth() + 1, false);
+        await fetchMonthData(nextMonthDate.getFullYear(), nextMonthDate.getMonth() + 1, false, true);
 
         renderSchedule();
     } catch (err) {
@@ -160,14 +160,15 @@ async function handleLoadCalendar() {
     }
 }
 
-async function fetchMonthData(year, month, reRender = true) {
+async function fetchMonthData(year, month, reRender = true, forceRefresh = false) {
     if (!state.username) return;
     const monthKey = `${year}-${month}`;
-    if (state.loadedMonths.has(monthKey)) return;
+    if (!forceRefresh && state.loadedMonths.has(monthKey)) return;
 
     const isSameOrigin = window.location.origin.includes('onrender.com') || window.location.origin.includes('localhost:5000');
     const apiBase = isSameOrigin ? '' : BACKEND_API_URL;
-    const primaryUrl = `${apiBase}/api/calendar/month?platform=${encodeURIComponent(state.platform)}&username=${encodeURIComponent(state.username)}&year=${year}&month=${month}`;
+    const refreshParam = forceRefresh ? '&refresh=true' : '';
+    const primaryUrl = `${apiBase}/api/calendar/month?platform=${encodeURIComponent(state.platform)}&username=${encodeURIComponent(state.username)}&year=${year}&month=${month}${refreshParam}`;
 
     let response;
     try {

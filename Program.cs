@@ -43,7 +43,7 @@ app.UseStaticFiles();
 // ==================== REST API ====================
 
 // 1. Monthly Calendar of Watching Anime
-app.MapGet("/api/calendar/month", async (string? platform, string? username, int? year, int? month, IAnimeAggregationService aggService) =>
+app.MapGet("/api/calendar/month", async (string? platform, string? username, int? year, int? month, bool? refresh, IAnimeAggregationService aggService) =>
 {
     if (string.IsNullOrWhiteSpace(platform) || string.IsNullOrWhiteSpace(username))
     {
@@ -60,7 +60,7 @@ app.MapGet("/api/calendar/month", async (string? platform, string? username, int
 
     try
     {
-        var calendar = await aggService.GetMonthlyCalendarAsync(platform, username, targetYear, targetMonth);
+        var calendar = await aggService.GetMonthlyCalendarAsync(platform, username, targetYear, targetMonth, refresh ?? false);
         return Results.Ok(calendar);
     }
     catch (Exception ex)
