@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
@@ -50,7 +50,7 @@ namespace LiveChartTracker.Services
             var avatarUrl = userNode?["attributes"]?["avatar"]?["large"]?.ToString() 
                 ?? userNode?["attributes"]?["avatar"]?["original"]?.ToString();
 
-            var libraryUrl = $"{KitsuBaseUrl}/library-entries?filter[userId]={userId}&filter[kind]=anime&filter[status]=current&include=anime&page[limit]=100";
+            var libraryUrl = $"{KitsuBaseUrl}/library-entries?filter[userId]={userId}&filter[kind]=anime&filter[status]=current,planned&include=anime&page[limit]=100";
             var libRes = await _httpClient.GetAsync(libraryUrl);
             if (!libRes.IsSuccessStatusCode)
             {

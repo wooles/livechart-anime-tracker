@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
@@ -39,7 +39,7 @@ query ($userName: String) {
       large
     }
   }
-  MediaListCollection(userName: $userName, type: ANIME, status: CURRENT) {
+  MediaListCollection(userName: $userName, type: ANIME, status_in: [CURRENT, PLANNING]) {
     lists {
       entries {
         status
@@ -91,7 +91,7 @@ query ($userName: String) {
             var avatarUrl = userRes["data"]?["User"]?["avatar"]?["large"]?.ToString();
             var lists = userRes["data"]?["MediaListCollection"]?["lists"]?.AsArray();
 
-            var watchingEntries = new Dictionary<int, (JsonNode media, int progress, double? score)>();
+            var watchingEntries = new Dictionary<int, (JsonNode media, int progress, double? score, string listStatus)>();
 
             if (lists != null)
             {
@@ -107,7 +107,9 @@ query ($userName: String) {
                         {
                             int progress = e["progress"]?.GetValue<int?>() ?? 0;
                             double? score = e["score"]?.GetValue<double?>();
-                            watchingEntries[mediaId.Value] = (media, progress, score);
+                            string rawStatus = e["status"]?.ToString() ?? "CURRENT";
+                            string listStatus = rawStatus == "PLANNING" ? "PlanToWatch" : "Watching";
+                            watchingEntries[mediaId.Value] = (media, progress, score, listStatus);
                         }
                     }
                 }
@@ -121,8 +123,8 @@ query ($userName: String) {
 
             var mediaIds = watchingEntries.Keys.ToList();
 
-            var startOfMonth = new DateTimeOffset(year, month, 1, 0, 0, 0, TimeSpan.Zero).AddDays(-1);
-            var endOfMonth = new DateTimeOffset(year, month, 1, 0, 0, 0, TimeSpan.Zero).AddMonths(1).AddDays(1);
+            var startOfMonth = new DateTimeOffset(year, month, 1, 0, 0, 0, TimeSpan.Zero).AddDays(-15);
+            var endOfMonth = new DateTimeOffset(year, month, 1, 0, 0, 0, TimeSpan.Zero).AddMonths(1).AddDays(15);
             long startSec = startOfMonth.ToUnixTimeSeconds();
             long endSec = endOfMonth.ToUnixTimeSeconds();
 
@@ -236,7 +238,8 @@ query ($page: Int, $perPage: Int, $mediaId_in: [Int], $airingAt_greater: Int, $a
                                 SiteUrl = media["siteUrl"]?.ToString(),
                                 AniListUrl = media["siteUrl"]?.ToString(),
                                 UserProgress = userEntry.progress,
-                                UserScore = userEntry.score
+                                UserScore = userEntry.score,
+                                ListStatus = userEntry.listStatus ?? "Watching"
                             };
 
                             if (ep.MalId.HasValue)

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
@@ -44,6 +44,7 @@ namespace LiveChartTracker.Models
         public string? KitsuUrl { get; set; }
 
         // User watch tracking
+        public string ListStatus { get; set; } = "Watching"; // "Watching" or "PlanToWatch"
         public int? UserProgress { get; set; } // e.g. watched 5
         public double? UserScore { get; set; }
     }

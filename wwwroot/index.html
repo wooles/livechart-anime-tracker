@@ -1,23 +1,32 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Anime Watching Calendar | Monthly Schedule</title>
+    <title>Anime Schedule | Weekly Airing Timeline</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css?v=5.0">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
 </head>
 <body>
     <!-- TOP HEADER -->
     <header class="app-header">
         <div class="header-container">
-            <div class="brand">
-                <span class="brand-icon">📅</span>
-                <div class="brand-text">
-                    <span class="brand-title">ANIME<span class="highlight">.CALENDAR</span></span>
+            <div class="header-left">
+                <div class="app-title-group">
+                    <span class="app-title">Anime Schedule</span>
+                    <span class="filter-icon" title="Weekly Anime Airing Timeline">🎛️</span>
+                </div>
+
+                <!-- DUAL NAVIGATION CONTROLS: << < Today > >> -->
+                <div class="nav-control-group">
+                    <button id="navWeekPrevBtn" class="nav-pill-btn" title="Previous Week (7 days)">&laquo;</button>
+                    <button id="navDayPrevBtn" class="nav-pill-btn" title="Previous Day (1 day)">&lsaquo;</button>
+                    <button id="navTodayBtn" class="nav-pill-btn nav-pill-today" title="Jump to Today">Today</button>
+                    <button id="navDayNextBtn" class="nav-pill-btn" title="Next Day (1 day)">&rsaquo;</button>
+                    <button id="navWeekNextBtn" class="nav-pill-btn" title="Next Week (7 days)">&raquo;</button>
                 </div>
             </div>
 
@@ -35,11 +44,11 @@
             </form>
 
             <div class="header-actions">
-                <span class="stat-pill stat-clock" id="localClockBadge" title="Your current local time and timezone">⏰ --:--:--</span>
+                <span class="stat-pill stat-clock" id="localClockBadge" title="Your current local time">⏰ --:--:--</span>
                 <a href="https://sort.moe" class="btn btn-outline btn-sm" title="Open Anime Ranking Sorter" target="_blank" rel="noopener noreferrer">
                     🏆 Sorter
                 </a>
-                <button id="exportIcsBtn" class="btn btn-outline btn-sm" title="Export calendar to .ics file">
+                <button id="exportIcsBtn" class="btn btn-outline btn-sm" title="Export schedule to .ics file">
                     📥 .ics
                 </button>
                 <button id="themeToggle" class="btn-icon" title="Toggle theme">
@@ -49,47 +58,26 @@
         </div>
     </header>
 
-    <!-- CALENDAR NAV & USER STATS -->
-    <section class="calendar-toolbar">
-        <div class="toolbar-container">
-            <div class="month-navigation">
-                <button id="prevMonthBtn" class="btn btn-secondary btn-sm nav-btn">&larr; Prev</button>
-                <h2 id="currentMonthDisplay" class="month-title">August 2026</h2>
-                <button id="nextMonthBtn" class="btn btn-secondary btn-sm nav-btn">Next &rarr;</button>
-                <button id="todayBtn" class="btn btn-outline btn-sm">Today</button>
-            </div>
-
-            <div id="calendarStats" class="calendar-stats hidden">
-                <span class="user-badge-text">User: <strong id="statsUsername">wooles</strong> (<span id="statsPlatform">AniList</span>)</span>
-                <span class="stat-pill stat-watching">Watching: <strong id="statsWatchingCount">0</strong></span>
-                <span class="stat-pill stat-tz" id="timezoneBadge">Local Time</span>
-            </div>
+    <!-- STATS TOOLBAR -->
+    <section id="calendarStats" class="schedule-stats-bar hidden">
+        <div class="stats-container">
+            <span class="user-badge-text">User: <strong id="statsUsername">wooles</strong> (<span id="statsPlatform">MyAnimeList</span>)</span>
+            <span class="stat-pill stat-watching">Watching & Plan: <strong id="statsWatchingCount">0</strong> series</span>
+            <span class="stat-pill stat-tz" id="timezoneBadge">Local Time</span>
         </div>
     </section>
 
-    <!-- MAIN CALENDAR CONTAINER (FULL SCREEN WIDTH) -->
-    <main class="calendar-wrapper">
-        <!-- Weekday Headers -->
-        <div class="weekdays-grid">
-            <div class="weekday-cell">Monday</div>
-            <div class="weekday-cell">Tuesday</div>
-            <div class="weekday-cell">Wednesday</div>
-            <div class="weekday-cell">Thursday</div>
-            <div class="weekday-cell">Friday</div>
-            <div class="weekday-cell weekend">Saturday</div>
-            <div class="weekday-cell weekend">Sunday</div>
-        </div>
-
-        <!-- Days Grid -->
-        <div id="calendarGrid" class="days-grid hidden">
-            <!-- 35 or 42 Day Cells injected via JS -->
+    <!-- MAIN WEEKLY TIMELINE SCHEDULE (7 FULL-HEIGHT COLUMNS) -->
+    <main class="schedule-wrapper">
+        <div id="scheduleGrid" class="schedule-columns-container hidden">
+            <!-- 7 Day Columns injected dynamically via JS -->
         </div>
 
         <!-- Initial Empty State -->
         <div id="initialState" class="empty-state">
             <div class="empty-icon">📺</div>
-            <h3>Enter your username</h3>
-            <p>Enter your <strong>AniList</strong>, <strong>Kitsu</strong>, or <strong>MyAnimeList</strong> username above and click <em>Load</em> to view your monthly anime release schedule in your local time.</p>
+            <h3>Anime Schedule Timeline</h3>
+            <p>Enter your <strong>MyAnimeList</strong>, <strong>AniList</strong>, or <strong>Kitsu</strong> username above and click <em>Load</em> to view your weekly release schedule (Watching + Plan to Watch) in your local timezone.</p>
         </div>
     </main>
 
@@ -114,6 +102,7 @@
 
                         <div class="modal-meta-row">
                             <span class="meta-tag" id="modalFormat">TV</span>
+                            <span class="meta-tag" id="modalStatusBadge">Watching</span>
                             <span class="meta-tag" id="modalProgress">Progress: 5/12</span>
                             <span class="meta-tag" id="modalScore">⭐ 84%</span>
                         </div>
@@ -134,13 +123,9 @@
     <!-- LOADING OVERLAY -->
     <div id="loadingOverlay" class="loading-overlay hidden">
         <div class="spinner"></div>
-        <p id="loadingText">Loading calendar...</p>
+        <p id="loadingText">Loading anime schedule...</p>
     </div>
 
-    <footer class="app-footer">
-        <p>Monthly Anime Watching Calendar &bull; .NET 8 + Tenrai.Net + AniList + Kitsu &bull; Displaying in Local Time</p>
-    </footer>
-
-    <script src="/js/app.js?v=4.0"></script>
+    <script src="/js/app.js?v=5.0"></script>
 </body>
 </html>

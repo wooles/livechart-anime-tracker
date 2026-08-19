@@ -36,56 +36,62 @@ namespace LiveChartTracker.Services
         public async Task<(string? avatarUrl, List<CalendarMonthEpisode> episodes, int totalWatching)> GetWatchingMonthEpisodesAsync(string username, int year, int month)
         {
             var avatarUrl = "https://myanimelist.net/images/userimages/default.jpg";
-            var watchingList = new List<(int malId, string title, string img, int watched, int totalEp, double score, string mediaType, int airingStatus, DateTime? startDate, DateTime? endDate)>();
+            var watchingList = new List<(int malId, string title, string img, int watched, int totalEp, double score, string mediaType, int airingStatus, DateTime? startDate, DateTime? endDate, string listStatus)>();
 
-            int offset = 0;
-            const int limit = 300;
-            bool hasMore = true;
+            int[] statusesToFetch = new[] { 1, 6 }; // 1 = Watching, 6 = Plan to Watch
 
-            while (hasMore && offset < 900)
+            foreach (var statusVal in statusesToFetch)
             {
-                var malListUrl = $"https://myanimelist.net/animelist/{Uri.EscapeDataString(username)}/load.json?offset={offset}&status=1";
-                var req = new HttpRequestMessage(HttpMethod.Get, malListUrl);
-                req.Headers.Add("Referer", $"https://myanimelist.net/animelist/{Uri.EscapeDataString(username)}");
+                string statusName = statusVal == 1 ? "Watching" : "PlanToWatch";
+                int offset = 0;
+                const int limit = 300;
+                bool hasMore = true;
 
-                var response = await _httpClient.SendAsync(req);
-                if (!response.IsSuccessStatusCode)
+                while (hasMore && offset < 900)
                 {
-                    if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                    var malListUrl = $"https://myanimelist.net/animelist/{Uri.EscapeDataString(username)}/load.json?offset={offset}&status={statusVal}";
+                    var req = new HttpRequestMessage(HttpMethod.Get, malListUrl);
+                    req.Headers.Add("Referer", $"https://myanimelist.net/animelist/{Uri.EscapeDataString(username)}");
+
+                    var response = await _httpClient.SendAsync(req);
+                    if (!response.IsSuccessStatusCode)
                     {
-                        throw new Exception($"User '{username}' was not found on MyAnimeList.");
+                        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                        {
+                            throw new Exception($"User '{username}' was not found on MyAnimeList.");
+                        }
+                        if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                        {
+                            throw new Exception($"Anime list for user '{username}' is private. Please make it public in MyAnimeList privacy settings.");
+                        }
+                        break;
                     }
-                    if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+
+                    var jsonStr = await response.Content.ReadAsStringAsync();
+                    var array = JsonNode.Parse(jsonStr)?.AsArray();
+                    if (array == null || array.Count == 0) break;
+
+                    foreach (var item in array)
                     {
-                        throw new Exception($"Anime list for user '{username}' is private. Please make it public in MyAnimeList privacy settings.");
+                        if (item == null) continue;
+                        int malId = item["anime_id"]?.GetValue<int>() ?? 0;
+                        string title = item["anime_title_eng"]?.ToString() ?? item["anime_title"]?.ToString() ?? "";
+                        string img = item["anime_image_path"]?.ToString() ?? "";
+                        int watched = item["num_watched_episodes"]?.GetValue<int>() ?? 0;
+                        int totalEp = item["anime_num_episodes"]?.GetValue<int>() ?? 0;
+                        double score = item["score"]?.GetValue<double>() ?? 0;
+                        string mediaType = item["anime_media_type_string"]?.ToString() ?? "TV";
+                        int airingStatus = item["anime_airing_status"]?.GetValue<int>() ?? 1;
+
+                        DateTime? start = ParseMalDate(item["anime_start_date_string"]?.ToString());
+                        DateTime? end = ParseMalDate(item["anime_end_date_string"]?.ToString());
+
+                        watchingList.Add((malId, title, img, watched, totalEp, score > 0 ? score * 10 : 0, mediaType, airingStatus, start, end, statusName));
                     }
-                    throw new Exception($"Could not load MyAnimeList for user '{username}' (Status: {(int)response.StatusCode}). Please ensure the username is correct and the list is public.");
+
+                    if (array.Count < limit) hasMore = false;
+                    else offset += limit;
                 }
-
-                var jsonStr = await response.Content.ReadAsStringAsync();
-                var array = JsonNode.Parse(jsonStr)?.AsArray();
-                if (array == null || array.Count == 0) break;
-
-                foreach (var item in array)
-                {
-                    if (item == null) continue;
-                    int malId = item["anime_id"]?.GetValue<int>() ?? 0;
-                    string title = item["anime_title_eng"]?.ToString() ?? item["anime_title"]?.ToString() ?? "";
-                    string img = item["anime_image_path"]?.ToString() ?? "";
-                    int watched = item["num_watched_episodes"]?.GetValue<int>() ?? 0;
-                    int totalEp = item["anime_num_episodes"]?.GetValue<int>() ?? 0;
-                    double score = item["score"]?.GetValue<double>() ?? 0;
-                    string mediaType = item["anime_media_type_string"]?.ToString() ?? "TV";
-                    int airingStatus = item["anime_airing_status"]?.GetValue<int>() ?? 1;
-
-                    DateTime? start = ParseMalDate(item["anime_start_date_string"]?.ToString());
-                    DateTime? end = ParseMalDate(item["anime_end_date_string"]?.ToString());
-
-                    watchingList.Add((malId, title, img, watched, totalEp, score > 0 ? score * 10 : 0, mediaType, airingStatus, start, end));
-                }
-
-                if (array.Count < limit) hasMore = false;
-                else offset += limit;
             }
 
             int totalWatching = watchingList.Count;
@@ -94,9 +100,9 @@ namespace LiveChartTracker.Services
                 return (avatarUrl, new List<CalendarMonthEpisode>(), 0);
             }
 
-            // Month boundaries
-            var startOfMonth = new DateTimeOffset(year, month, 1, 0, 0, 0, TimeSpan.Zero).AddDays(-1);
-            var endOfMonth = new DateTimeOffset(year, month, 1, 0, 0, 0, TimeSpan.Zero).AddMonths(1).AddDays(1);
+            // Expanded range (+/- 15 days around month) to support rolling weekly schedules
+            var startOfMonth = new DateTimeOffset(year, month, 1, 0, 0, 0, TimeSpan.Zero).AddDays(-15);
+            var endOfMonth = new DateTimeOffset(year, month, 1, 0, 0, 0, TimeSpan.Zero).AddMonths(1).AddDays(15);
             long startSec = startOfMonth.ToUnixTimeSeconds();
             long endSec = endOfMonth.ToUnixTimeSeconds();
 
@@ -244,7 +250,8 @@ query ($page: Int, $perPage: Int, $mediaIds: [Int], $startSec: Int, $endSec: Int
                                         AniListUrl = media["siteUrl"]?.ToString(),
                                         SiteUrl = mMalId.HasValue ? $"https://myanimelist.net/anime/{mMalId.Value}" : media["siteUrl"]?.ToString(),
                                         UserProgress = userEntry.watched,
-                                        UserScore = userEntry.score > 0 ? userEntry.score : null
+                                        UserScore = userEntry.score > 0 ? userEntry.score : null,
+                                        ListStatus = userEntry.listStatus ?? "Watching"
                                     });
 
                                     if (mMalId.HasValue) processedMalIds.Add(mMalId.Value);
@@ -323,7 +330,8 @@ query ($page: Int, $perPage: Int, $mediaIds: [Int], $startSec: Int, $endSec: Int
                             MalUrl = $"https://myanimelist.net/anime/{item.malId}",
                             SiteUrl = $"https://myanimelist.net/anime/{item.malId}",
                             UserProgress = item.watched,
-                            UserScore = item.score > 0 ? item.score : null
+                            UserScore = item.score > 0 ? item.score : null,
+                            ListStatus = item.listStatus ?? "Watching"
                         });
                     }
                 }
