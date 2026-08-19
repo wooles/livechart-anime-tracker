@@ -208,14 +208,23 @@ async function handleLoadCalendar(showSpinner = true) {
         }
     }
 
+    const isUserOrPlatChanged = (state.username !== user || state.platform !== plat);
+
     state.username = user;
     state.platform = plat;
 
     localStorage.setItem('anime_cal_user', user);
     localStorage.setItem('anime_cal_plat', plat);
 
-    // Only show full-screen blocking overlay if user explicitly clicked 'Load'
-    if (showSpinner) {
+    if (isUserOrPlatChanged || showSpinner) {
+        // Reset memory state and check local cache for this specific user
+        state.allEpisodes = [];
+        state.loadedMonths.clear();
+        restoreLocalCache();
+    }
+
+    // Only show full-screen blocking overlay if user explicitly clicked 'Load' or has no cached data
+    if (showSpinner || state.allEpisodes.length === 0) {
         showLoading(`Loading anime schedule for ${state.username} (${state.platform})...`);
     }
 
@@ -224,11 +233,11 @@ async function handleLoadCalendar(showSpinner = true) {
         const m = state.startDate.getMonth() + 1;
         
         // Fetch current month + next month for seamless navigation
-        await fetchMonthData(y, m, false, false);
+        await fetchMonthData(y, m, false, true);
         
         const nextMonthDate = new Date(state.startDate);
         nextMonthDate.setMonth(nextMonthDate.getMonth() + 1);
-        await fetchMonthData(nextMonthDate.getFullYear(), nextMonthDate.getMonth() + 1, false, false);
+        await fetchMonthData(nextMonthDate.getFullYear(), nextMonthDate.getMonth() + 1, false, true);
 
         renderSchedule();
         saveLocalCache();
@@ -238,9 +247,7 @@ async function handleLoadCalendar(showSpinner = true) {
             alert(err.message);
         }
     } finally {
-        if (showSpinner) {
-            hideLoading();
-        }
+        hideLoading();
     }
 }
 
