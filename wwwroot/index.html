@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=9.0">
+    <link rel="stylesheet" href="style.css?v=10.0">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
 </head>
 <body>
@@ -45,6 +45,9 @@
             </form>
 
             <div class="header-actions">
+                <button id="titleLangToggle" class="btn btn-outline btn-sm" title="Toggle Title Language (English / Romaji)">
+                    <span id="titleLangLabel">🌐 English</span>
+                </button>
                 <span class="stat-pill stat-clock" id="localClockBadge" title="Your current local time">⏰ --:--:--</span>
                 <a href="https://sort.moe" class="btn btn-outline btn-sm" title="Open Anime Ranking Sorter" target="_blank" rel="noopener noreferrer">
                     🏆 Sorter
@@ -127,6 +130,6 @@
         <p id="loadingText">Loading anime schedule...</p>
     </div>
 
-    <script src="app.js?v=9.0"></script>
+    <script src="app.js?v=10.0"></script>
 </body>
 </html>

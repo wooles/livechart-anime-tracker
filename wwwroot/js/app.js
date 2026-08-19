@@ -3,12 +3,13 @@
 const BACKEND_API_URL = 'https://livechart-anime-tracker.onrender.com';
 
 const state = {
-    platform: 'AniList',
+    platform: 'MyAnimeList',
     username: '',
     startDate: getTodayMidnight(),
     calendarData: null,
     allEpisodes: [],
-    loadedMonths: new Set() // Tracks "YYYY-MM"
+    loadedMonths: new Set(), // Tracks "YYYY-MM"
+    titleLang: localStorage.getItem('anime_cal_title_lang') || 'english' // 'english' or 'romaji'
 };
 
 function getTodayMidnight() {
@@ -17,9 +18,26 @@ function getTodayMidnight() {
     return d;
 }
 
+function getAnimeDisplayTitle(ep) {
+    if (!ep) return '';
+    if (state.titleLang === 'romaji') {
+        return ep.titleRomaji || ep.titleEnglish || ep.displayTitle || '';
+    } else {
+        return ep.titleEnglish || ep.titleRomaji || ep.displayTitle || '';
+    }
+}
+
+function updateTitleLangButton() {
+    const btnLabel = document.getElementById('titleLangLabel');
+    if (btnLabel) {
+        btnLabel.textContent = (state.titleLang === 'romaji') ? '🇯🇵 Romaji' : '🇬🇧 English';
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     initTheme();
     loadStoredUser();
+    updateTitleLangButton();
     setupEventListeners();
     startLiveTickers();
 
@@ -48,6 +66,16 @@ function loadStoredUser() {
 }
 
 function setupEventListeners() {
+    const titleToggle = document.getElementById('titleLangToggle');
+    if (titleToggle) {
+        titleToggle.addEventListener('click', () => {
+            state.titleLang = (state.titleLang === 'english' ? 'romaji' : 'english');
+            localStorage.setItem('anime_cal_title_lang', state.titleLang);
+            updateTitleLangButton();
+            renderSchedule();
+        });
+    }
+
     document.getElementById('themeToggle').addEventListener('click', () => {
         const current = document.documentElement.getAttribute('data-theme');
         const next = current === 'dark' ? 'light' : 'dark';
@@ -343,14 +371,16 @@ function createAnimeCard(ep) {
     const card = document.createElement('div');
     const statusClass = (ep.listStatus === 'PlanToWatch' || ep.listStatus === 'PLANNING') ? 'status-plantowatch' : 'status-watching';
     card.className = `anime-card ${statusClass}`;
-    card.title = `${ep.displayTitle} (Episode ${ep.episodeNumber})`;
+    
+    const displayTitle = getAnimeDisplayTitle(ep);
+    card.title = `${displayTitle} (Episode ${ep.episodeNumber})`;
     card.addEventListener('click', () => openDetailModal(ep));
 
     // Cover Poster
     const poster = document.createElement('img');
     poster.className = 'card-poster';
     poster.src = ep.coverImage || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="56"><rect width="100%" height="100%" fill="%23222"/></svg>';
-    poster.alt = ep.displayTitle;
+    poster.alt = displayTitle;
     poster.loading = 'lazy';
     card.appendChild(poster);
 
@@ -378,7 +408,7 @@ function createAnimeCard(ep) {
     // Title
     const titleEl = document.createElement('div');
     titleEl.className = 'card-title';
-    titleEl.textContent = ep.displayTitle;
+    titleEl.textContent = displayTitle;
     content.appendChild(titleEl);
 
     // Bottom row: Format + Bookmark
@@ -436,7 +466,7 @@ function startLiveTickers() {
 
 function getLiveTimeFormatted() {
     const now = new Date();
-    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
     const tzShort = Intl.DateTimeFormat().resolvedOptions().timeZone.split('/')[1] || 'Local';
     return `${timeStr} ${tzShort}`;
 }
@@ -470,7 +500,7 @@ function formatLocalTime(isoStringOrDate) {
     if (!isoStringOrDate) return '--:--';
     try {
         const d = new Date(isoStringOrDate);
-        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
     } catch {
         return '--:--';
     }
@@ -479,8 +509,10 @@ function formatLocalTime(isoStringOrDate) {
 // ==================== DETAIL MODAL ====================
 
 function openDetailModal(ep) {
-    document.getElementById('modalAnimeTitle').textContent = ep.displayTitle;
-    document.getElementById('modalRomajiTitle').textContent = ep.titleRomaji && ep.titleRomaji !== ep.displayTitle ? `Romaji: ${ep.titleRomaji}` : '';
+    const displayTitle = getAnimeDisplayTitle(ep);
+    document.getElementById('modalAnimeTitle').textContent = displayTitle;
+    const subTitle = (state.titleLang === 'romaji') ? (ep.titleEnglish || ep.displayTitle) : (ep.titleRomaji || ep.displayTitle);
+    document.getElementById('modalRomajiTitle').textContent = (subTitle && subTitle !== displayTitle) ? `Alt: ${subTitle}` : '';
     document.getElementById('modalPoster').src = ep.coverImage || '';
     
     document.getElementById('modalEpBadge').textContent = `Episode ${ep.episodeNumber} Premiere`;
@@ -493,7 +525,8 @@ function openDetailModal(ep) {
         day: 'numeric', 
         year: 'numeric', 
         hour: '2-digit', 
-        minute: '2-digit' 
+        minute: '2-digit',
+        hour12: false
     }) + ` (${tzName})`;
 
     document.getElementById('modalFormat').textContent = `Format: ${ep.format || 'TV'}`;
