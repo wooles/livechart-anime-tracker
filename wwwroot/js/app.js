@@ -1,4 +1,6 @@
-// LiveChart Anime Watching Calendar - sort.moe/calendar
+﻿// LiveChart Anime Watching Calendar - sort.moe/calendar
+
+const BACKEND_API_URL = 'https://livechart-anime-tracker.onrender.com';
 
 const state = {
     platform: 'AniList',
@@ -96,11 +98,13 @@ function setupEventListeners() {
     });
 
     document.getElementById('exportIcsBtn').addEventListener('click', () => {
-        if (!state.calendarData || !state.calendarData.episodes || state.calendarData.episodes.length === 0) {
+        if (!state.calendarData || !state.calendarData.days) {
             alert('No episodes loaded to export. Please load your calendar first.');
             return;
         }
-        generateAndDownloadIcs(state.calendarData);
+        // Direct download from backend
+        const exportUrl = `${BACKEND_API_URL}/api/export/ics?platform=${encodeURIComponent(state.platform)}&username=${encodeURIComponent(state.username)}&year=${state.year}&month=${state.month}`;
+        window.open(exportUrl, '_blank');
     });
 
     // MAL XML File Upload listener
@@ -157,7 +161,6 @@ async function handleMalXmlFile(event) {
         for (let i = 0; i < animeNodes.length; i++) {
             const node = animeNodes[i];
             const status = node.getElementsByTagName("my_status")?.[0]?.textContent;
-            // Status 1 or "Watching"
             if (status === "1" || status === "Watching") {
                 const malId = parseInt(node.getElementsByTagName("series_animedb_id")?.[0]?.textContent || "0", 10);
                 const title = node.getElementsByTagName("series_title")?.[0]?.textContent || "";
@@ -200,45 +203,38 @@ async function handleMalXmlFile(event) {
     }
 }
 
-const BACKEND_API_URL = 'https://livechart-anime-tracker.onrender.com';
-
 async function fetchCalendar() {
     showLoading(`Loading anime calendar from ${state.platform} for ${state.username}...`);
     try {
+        // 1. Direct query to live .NET 8 + Tenrai.Net backend (Render.com / Local)
+        const primaryUrl = `${BACKEND_API_URL}/api/calendar/month?platform=${encodeURIComponent(state.platform)}&username=${encodeURIComponent(state.username)}&year=${state.year}&month=${state.month}`;
+        
+        try {
+            const apiRes = await fetch(primaryUrl);
+            if (apiRes.ok) {
+                const apiData = await apiRes.json();
+                state.calendarData = apiData;
+                renderCalendar(apiData);
+                return;
+            }
+        } catch (netErr) {
+            console.warn("Cloud backend unreachable, trying direct browser query:", netErr);
+        }
+
+        // 2. Client-side fallback for AniList and Kitsu
         let episodes = [];
         let totalWatching = 0;
 
-        // 1. Direct query to live .NET 8 + Tenrai.Net backend (Render.com / Local)
-        const backendUrls = [
-            `${BACKEND_API_URL}/api/calendar/month?platform=${encodeURIComponent(state.platform)}&username=${encodeURIComponent(state.username)}&year=${state.year}&month=${state.month}`,
-            `/api/calendar/month?platform=${encodeURIComponent(state.platform)}&username=${encodeURIComponent(state.username)}&year=${state.year}&month=${state.month}`
-        ];
-
-        for (const bUrl of backendUrls) {
-            try {
-                const apiRes = await fetch(bUrl);
-                if (apiRes.ok) {
-                    const apiData = await apiRes.json();
-                    state.calendarData = apiData;
-                    renderCalendar(apiData);
-                    return;
-                }
-            } catch {}
-        }
-
-        // 2. Client-side fallback if backend is unreachable
         if (state.platform === 'AniList') {
             const res = await fetchAniListWatching(state.username, state.year, state.month);
-            episodes = res.episodes;
-            totalWatching = res.totalWatching;
-        } else if (state.platform === 'MyAnimeList') {
-            const res = await fetchMalWatching(state.username, state.year, state.month);
             episodes = res.episodes;
             totalWatching = res.totalWatching;
         } else if (state.platform === 'Kitsu') {
             const res = await fetchKitsuWatching(state.username, state.year, state.month);
             episodes = res.episodes;
             totalWatching = res.totalWatching;
+        } else {
+            throw new Error(`Could not connect to backend server at ${BACKEND_API_URL}. Please check your connection or try again.`);
         }
 
         const gridData = buildMonthlyGrid(state.year, state.month, episodes, state.username, state.platform, totalWatching);
@@ -252,7 +248,7 @@ async function fetchCalendar() {
     }
 }
 
-// 1. AniList GraphQL (Direct browser support)
+// AniList GraphQL (Direct browser support)
 async function fetchAniListWatching(username, year, month) {
     const userQuery = `
     query ($userName: String) {
@@ -399,34 +395,6 @@ async function fetchAniListWatching(username, year, month) {
     return { episodes, totalWatching };
 }
 
-// 2. MyAnimeList Watching & XML Matcher
-async function fetchMalWatching(username, year, month) {
-    let watching = [];
-    
-    // Endpoint 1: Backend MAL proxy / Tenrai.Net
-    try {
-        const res = await fetch(`/api/mal/watchlist/${encodeURIComponent(username)}`);
-        if (res.ok) {
-            const data = await res.json();
-            if (Array.isArray(data) && data.length) {
-                watching = data.map(item => ({
-                    malId: item.malId || item.id,
-                    title: item.title,
-                    image: item.coverUrl,
-                    watched: item.watchedEpisodes || 0,
-                    score: item.score || 0
-                }));
-            }
-        }
-    } catch {}
-
-    if (watching.length === 0) {
-        throw new Error(`MyAnimeList blocks direct browser requests due to CORS on static GitHub Pages.\n\nOption 1: Click the '📁 MAL .xml' button above and upload your MAL XML export (from myanimelist.net/panel.php?go=export).\nOption 2: Run the local Tenrai.Net app (run.bat).\nOption 3: Use AniList or Kitsu.`);
-    }
-
-    return await fetchSchedulesForMalList(watching, year, month);
-}
-
 // Reusable LiveChart Schedule Matcher for MAL IDs
 async function fetchSchedulesForMalList(watching, year, month) {
     const totalWatching = watching.length;
@@ -540,7 +508,7 @@ async function fetchSchedulesForMalList(watching, year, month) {
     return { episodes, totalWatching };
 }
 
-// 3. Kitsu Client-side
+// Kitsu Client-side
 async function fetchKitsuWatching(username, year, month) {
     const userRes = await fetch(`https://kitsu.app/api/edge/users?filter[name]=${encodeURIComponent(username)}`, {
         headers: { "Accept": "application/vnd.api+json" }
@@ -774,51 +742,6 @@ function openDetailModal(ep) {
     }
 
     document.getElementById('detailModal').classList.remove('hidden');
-}
-
-function generateAndDownloadIcs(calendarData) {
-    let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//sort.moe//Anime Calendar//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n";
-    
-    (calendarData.episodes || []).forEach(ep => {
-        const start = new Date(ep.airingAt);
-        const end = new Date(start.getTime() + 25 * 60000); // 25 minutes
-
-        const startStr = start.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
-        const endStr = end.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
-
-        ics += "BEGIN:VEVENT\r\n";
-        ics += `UID:${ep.id}@sort.moe\r\n`;
-        ics += `SUMMARY:${ep.displayTitle} - Episode ${ep.episodeNumber}\r\n`;
-        ics += `DTSTART:${startStr}\r\n`;
-        ics += `DTEND:${endStr}\r\n`;
-        ics += `DESCRIPTION:Episode ${ep.episodeNumber} premiere of ${ep.displayTitle}.\\nProgress: ${ep.userProgress || 0}/${ep.totalEpisodes || '?'}\\nURL: ${ep.aniListUrl || ep.malUrl || ''}\r\n`;
-        ics += "END:VEVENT\r\n";
-    });
-
-    ics += "END:VCALENDAR\r\n";
-
-    const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `anime_calendar_${calendarData.year}_${calendarData.month}.ics`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-}
-
-function addLink(container, href, text) {
-    const a = document.createElement('a');
-    a.href = href;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    a.className = 'btn btn-sm btn-outline';
-    a.textContent = text;
-    container.appendChild(a);
-}
-
-function closeModal() {
-    document.getElementById('detailModal').classList.add('hidden');
 }
 
 function formatLocalTime(isoStringOrDate) {
