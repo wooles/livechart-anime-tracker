@@ -69,17 +69,35 @@ function loadStoredUser() {
 
 function restoreLocalCache() {
     try {
-        const cacheKey = `anime_cal_cache_${state.platform}_${state.username}`;
+        const savedUser = localStorage.getItem('anime_cal_user') || state.username;
+        const savedPlat = localStorage.getItem('anime_cal_plat') || state.platform;
+        if (!savedUser) return;
+        const cacheKey = `anime_cal_cache_${savedPlat}_${savedUser}`;
         const raw = localStorage.getItem(cacheKey);
         if (raw) {
             const parsed = JSON.parse(raw);
             if (parsed && Array.isArray(parsed.episodes) && parsed.episodes.length > 0) {
                 state.allEpisodes = parsed.episodes;
+                state.loadedMonths = new Set(parsed.loadedMonths || []);
                 renderSchedule();
             }
         }
     } catch (e) {
         console.warn("Could not restore local cache:", e);
+    }
+}
+
+function saveLocalCache() {
+    try {
+        if (!state.username || state.allEpisodes.length === 0) return;
+        const cacheKey = `anime_cal_cache_${state.platform}_${state.username}`;
+        localStorage.setItem(cacheKey, JSON.stringify({
+            episodes: state.allEpisodes,
+            loadedMonths: Array.from(state.loadedMonths),
+            time: Date.now()
+        }));
+    } catch (e) {
+        console.warn("Storage quota exceeded or storage disabled:", e);
     }
 }
 
@@ -173,6 +191,7 @@ async function checkAndFetchMonthIfNeeded() {
     }
     if (needsRerender) {
         renderSchedule();
+        saveLocalCache();
     }
 }
 
@@ -195,7 +214,8 @@ async function handleLoadCalendar(showSpinner = true) {
     localStorage.setItem('anime_cal_user', user);
     localStorage.setItem('anime_cal_plat', plat);
 
-    if (showSpinner || state.allEpisodes.length === 0) {
+    // Only show full-screen blocking overlay if user explicitly clicked 'Load'
+    if (showSpinner) {
         showLoading(`Loading anime schedule for ${state.username} (${state.platform})...`);
     }
 
@@ -211,24 +231,16 @@ async function handleLoadCalendar(showSpinner = true) {
         await fetchMonthData(nextMonthDate.getFullYear(), nextMonthDate.getMonth() + 1, false, false);
 
         renderSchedule();
-
-        // Persist to local cache for instant 0ms opening next time
-        try {
-            const cacheKey = `anime_cal_cache_${state.platform}_${state.username}`;
-            localStorage.setItem(cacheKey, JSON.stringify({
-                episodes: state.allEpisodes,
-                time: Date.now()
-            }));
-        } catch (e) {
-            console.warn("Storage quota exceeded or storage disabled:", e);
-        }
+        saveLocalCache();
     } catch (err) {
         console.error("Fetch schedule error:", err);
         if (showSpinner) {
             alert(err.message);
         }
     } finally {
-        hideLoading();
+        if (showSpinner) {
+            hideLoading();
+        }
     }
 }
 
