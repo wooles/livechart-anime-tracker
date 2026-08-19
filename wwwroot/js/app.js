@@ -746,6 +746,13 @@ function openDetailModal(ep) {
         addLink(links, ep.kitsuUrl || `https://kitsu.app/anime/${ep.kitsuId}`, '🦊 Kitsu');
     }
 
+    // Nyaa.si English-translated releases
+    const nyaaTitle = (ep.titleRomaji || ep.displayTitle || ep.titleEnglish || '').trim();
+    if (nyaaTitle) {
+        const nyaaUrl = `https://nyaa.si/?f=0&c=1_2&q=${encodeURIComponent(nyaaTitle)}`;
+        addLink(links, nyaaUrl, '🐱 Nyaa.si');
+    }
+
     document.getElementById('detailModal').classList.remove('hidden');
 }
 
