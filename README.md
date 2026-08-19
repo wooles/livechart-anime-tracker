@@ -1,14 +1,16 @@
-﻿# 📅 Anime Monthly Calendar (LiveChart Anime Tracker)
+# 📅 Anime Monthly Calendar (LiveChart Anime Tracker)
 
-[![Live Web App](https://img.shields.io/badge/Live-onrender.com-blue?style=for-the-badge&logo=render&logoColor=white)](https://livechart-anime-tracker.onrender.com/)
+[![Live Web App](https://img.shields.io/badge/Live-sort.moe/calendar-blue?style=for-the-badge&logo=google-chrome&logoColor=white)](https://sort.moe/calendar)
+[![Backend API](https://img.shields.io/badge/API-onrender.com-blue?style=for-the-badge&logo=render&logoColor=white)](https://livechart-anime-tracker.onrender.com/)
 [![Anime Sorter](https://img.shields.io/badge/🏆_Sorter-sort.moe-6c5ce7?style=for-the-badge)](https://sort.moe/)
 [![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?style=for-the-badge&logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![Tenrai.Net](https://img.shields.io/badge/Tenrai.Net-3.1.0-2ecc71?style=for-the-badge)](https://www.nuget.org/packages/Tenrai.Net)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
-A high-performance **.NET 8** web application providing an ultra-compact, full-screen **Monthly Anime Watching Calendar (Monday – Sunday 7-column grid)**. Automatically aggregates upcoming episode releases **exclusively for series currently in the user's watching list**, mapped to exact Japanese TV broadcast minutes from LiveChart.
+A high-performance **.NET 8** web application providing an ultra-compact, full-screen **Weekly & Monthly Anime Watching Calendar**. Automatically aggregates upcoming episode releases **exclusively for series currently in the user's watching list**, mapped to exact Japanese TV broadcast minutes from LiveChart.
 
-👉 **Live Cloud App:** **[https://livechart-anime-tracker.onrender.com/](https://livechart-anime-tracker.onrender.com/)**  
+👉 **Anime Watching Calendar:** **[https://sort.moe/calendar](https://sort.moe/calendar)**  
+👉 **Live Cloud API:** **[https://livechart-anime-tracker.onrender.com/](https://livechart-anime-tracker.onrender.com/)**  
 👉 **Anime Ranking Sorter:** **[https://sort.moe/](https://sort.moe/)**
 
 ---
