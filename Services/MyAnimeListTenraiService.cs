@@ -158,7 +158,12 @@ query ($malIds: [Int]) {
                             int? malId = m?["idMal"]?.GetValue<int?>();
                             if (mId > 0 && malId.HasValue && m != null)
                             {
-                                aniMediaMap[malId.Value] = m;
+                                if (!aniMediaMap.TryGetValue(malId.Value, out var existing) ||
+                                    (m["nextAiringEpisode"] != null && existing["nextAiringEpisode"] == null) ||
+                                    (m["status"]?.ToString() == "RELEASING" && existing["status"]?.ToString() != "RELEASING"))
+                                {
+                                    aniMediaMap[malId.Value] = m;
+                                }
                                 aniIds.Add(mId);
                             }
                         }
@@ -349,14 +354,14 @@ query ($page: Int, $perPage: Int, $mediaIds: [Int], $startSec: Int, $endSec: Int
             foreach (var item in watchingList)
             {
                 if (processedMalIds.Contains(item.malId)) continue; // Already matched with exact airing time!
-                if (item.airingStatus == 1) continue; // Skip finished/completed shows
+                if (item.airingStatus == 2) continue; // Skip finished/completed shows (MAL status 2 = Finished)
 
-                if (item.airingStatus == 2) // Currently Airing
+                if (item.airingStatus == 1) // Currently Airing (MAL status 1 = Airing)
                 {
                     if (item.endDate.HasValue && item.endDate.Value < monthStart) continue;
                     if (item.startDate.HasValue && item.startDate.Value > monthEnd) continue;
                 }
-                else if (item.airingStatus == 3) // Not yet aired
+                else if (item.airingStatus == 3) // Not yet aired (MAL status 3 = Not Yet Aired)
                 {
                     if (!item.startDate.HasValue || item.startDate.Value < monthStart || item.startDate.Value > monthEnd) continue;
                 }
