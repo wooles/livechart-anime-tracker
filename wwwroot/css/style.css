@@ -528,6 +528,138 @@ html, body {
     color: var(--accent-purple);
 }
 
+/* ==================== DYNAMIC ADAPTIVE DENSITY SCALING ==================== */
+
+/* Compact Density (7-9 eps or medium screens) */
+.schedule-columns-container.density-compact {
+    gap: 4px;
+}
+.schedule-columns-container.density-compact .day-column-header {
+    padding: 6px 8px;
+}
+.schedule-columns-container.density-compact .day-column-body {
+    padding: 3px;
+    gap: 3px;
+}
+.schedule-columns-container.density-compact .anime-card {
+    padding: 3px 4px;
+    gap: 5px;
+}
+.schedule-columns-container.density-compact .card-poster {
+    width: 32px;
+    height: 45px;
+}
+.schedule-columns-container.density-compact .card-air-time {
+    font-size: 0.68rem;
+}
+.schedule-columns-container.density-compact .card-countdown {
+    font-size: 0.62rem;
+}
+.schedule-columns-container.density-compact .card-title {
+    font-size: 0.71rem;
+    line-height: 1.15;
+    -webkit-line-clamp: 2;
+}
+.schedule-columns-container.density-compact .card-footer {
+    font-size: 0.60rem;
+}
+
+/* Dense Density (10-13 eps - e.g. All Airing Anime / High Episode Count) */
+.schedule-columns-container.density-dense {
+    gap: 4px;
+}
+.schedule-columns-container.density-dense .day-column-header {
+    padding: 4px 6px;
+}
+.schedule-columns-container.density-dense .day-header-title {
+    font-size: 0.78rem;
+}
+.schedule-columns-container.density-dense .day-ep-count {
+    font-size: 0.65rem;
+}
+.schedule-columns-container.density-dense .day-column-body {
+    padding: 2px;
+    gap: 2px;
+}
+.schedule-columns-container.density-dense .anime-card {
+    padding: 2px 3px;
+    gap: 4px;
+}
+.schedule-columns-container.density-dense .card-poster {
+    width: 25px;
+    height: 35px;
+    border-radius: 2px;
+}
+.schedule-columns-container.density-dense .card-time-row {
+    gap: 2px;
+}
+.schedule-columns-container.density-dense .card-air-time {
+    font-size: 0.65rem;
+}
+.schedule-columns-container.density-dense .card-countdown {
+    font-size: 0.58rem;
+}
+.schedule-columns-container.density-dense .card-title {
+    font-size: 0.66rem;
+    line-height: 1.1;
+    -webkit-line-clamp: 1;
+}
+.schedule-columns-container.density-dense .card-footer {
+    font-size: 0.56rem;
+    margin-top: 0;
+}
+.schedule-columns-container.density-dense .card-bookmark-icon {
+    font-size: 0.65rem;
+}
+
+/* Ultra-Dense Density (14+ eps) */
+.schedule-columns-container.density-ultra-dense {
+    gap: 3px;
+}
+.schedule-columns-container.density-ultra-dense .day-column-header {
+    padding: 3px 5px;
+}
+.schedule-columns-container.density-ultra-dense .day-header-title {
+    font-size: 0.72rem;
+}
+.schedule-columns-container.density-ultra-dense .day-ep-count {
+    font-size: 0.60rem;
+}
+.schedule-columns-container.density-ultra-dense .day-column-body {
+    padding: 2px;
+    gap: 2px;
+}
+.schedule-columns-container.density-ultra-dense .anime-card {
+    padding: 1px 2px;
+    gap: 3px;
+}
+.schedule-columns-container.density-ultra-dense .card-poster {
+    width: 20px;
+    height: 28px;
+    border-radius: 2px;
+}
+.schedule-columns-container.density-ultra-dense .card-time-row {
+    gap: 2px;
+}
+.schedule-columns-container.density-ultra-dense .card-air-time {
+    font-size: 0.60rem;
+}
+.schedule-columns-container.density-ultra-dense .card-countdown {
+    font-size: 0.54rem;
+}
+.schedule-columns-container.density-ultra-dense .card-title {
+    font-size: 0.60rem;
+    line-height: 1.05;
+    -webkit-line-clamp: 1;
+}
+.schedule-columns-container.density-ultra-dense .card-footer {
+    font-size: 0.50rem;
+    margin-top: 0;
+}
+.schedule-columns-container.density-ultra-dense .card-bookmark-icon {
+    font-size: 0.60rem;
+}
+
 /* EMPTY STATES & MODALS */
 .empty-state {
     display: flex;

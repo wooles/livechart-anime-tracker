@@ -192,6 +192,16 @@ function setupEventListeners() {
             closeModal();
         }
     });
+
+    let resizeTimer = null;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+            if (state.allEpisodes && state.allEpisodes.length > 0) {
+                renderSchedule();
+            }
+        }, 120);
+    });
 }
 
 function shiftDays(n) {
@@ -362,7 +372,10 @@ function renderSchedule() {
     const monthShortNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const dayShortNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-    // Render 7 consecutive day columns starting from state.startDate
+    // First, analyze all 7 visible days to determine episode counts & optimal scaling density
+    const daysData = [];
+    let maxVisibleEps = 0;
+
     for (let i = 0; i < 7; i++) {
         const colDate = new Date(state.startDate);
         colDate.setDate(colDate.getDate() + i);
@@ -371,33 +384,7 @@ function renderSchedule() {
         const colMonth = colDate.getMonth(); // 0-11
         const colDay = colDate.getDate();
         const colDayOfWeek = colDate.getDay();
-
         const isToday = (colDate.getTime() === todayMidTime);
-
-        // Header text e.g. "Wed Aug 19"
-        const headerTitle = `${dayShortNames[colDayOfWeek]} ${monthShortNames[colMonth]} ${colDay}`;
-
-        const colEl = document.createElement('div');
-        colEl.className = 'day-column' + (isToday ? ' is-today' : '');
-
-        // Column Header
-        const colHeader = document.createElement('div');
-        colHeader.className = 'day-column-header';
-
-        const titleSpan = document.createElement('span');
-        titleSpan.className = 'day-header-title';
-        titleSpan.textContent = headerTitle;
-        colHeader.appendChild(titleSpan);
-
-        const countSpan = document.createElement('span');
-        countSpan.className = 'day-ep-count';
-        colHeader.appendChild(countSpan);
-
-        colEl.appendChild(colHeader);
-
-        // Column Body (Episode Cards Container)
-        const colBody = document.createElement('div');
-        colBody.className = 'day-column-body';
 
         // Filter all episodes matching this local date
         const dayEps = state.allEpisodes.filter(ep => {
@@ -407,16 +394,70 @@ function renderSchedule() {
                    epDate.getDate() === colDay;
         }).sort((a, b) => new Date(a.airingAt) - new Date(b.airingAt));
 
-        countSpan.textContent = dayEps.length > 0 ? `${dayEps.length} eps` : '';
+        if (dayEps.length > maxVisibleEps) {
+            maxVisibleEps = dayEps.length;
+        }
+
+        daysData.push({
+            colDate,
+            colYear,
+            colMonth,
+            colDay,
+            colDayOfWeek,
+            isToday,
+            headerTitle: `${dayShortNames[colDayOfWeek]} ${monthShortNames[colMonth]} ${colDay}`,
+            dayEps
+        });
+    }
+
+    // Dynamic density scaling based on max episode count and available viewport height
+    const availableHeight = Math.max(300, window.innerHeight - 150);
+    const slotHeight = maxVisibleEps > 0 ? (availableHeight / maxVisibleEps) : 100;
+
+    let densityClass = 'density-normal';
+    if (slotHeight < 45 || maxVisibleEps >= 14) {
+        densityClass = 'density-ultra-dense';
+    } else if (slotHeight < 62 || maxVisibleEps >= 10) {
+        densityClass = 'density-dense';
+    } else if (slotHeight < 80 || maxVisibleEps >= 7) {
+        densityClass = 'density-compact';
+    }
+
+    grid.className = `schedule-columns-container ${densityClass}`;
+
+    // Render 7 consecutive day columns
+    daysData.forEach(dayInfo => {
+        const colEl = document.createElement('div');
+        colEl.className = 'day-column' + (dayInfo.isToday ? ' is-today' : '');
+
+        // Column Header
+        const colHeader = document.createElement('div');
+        colHeader.className = 'day-column-header';
+
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'day-header-title';
+        titleSpan.textContent = dayInfo.headerTitle;
+        colHeader.appendChild(titleSpan);
+
+        const countSpan = document.createElement('span');
+        countSpan.className = 'day-ep-count';
+        countSpan.textContent = dayInfo.dayEps.length > 0 ? `${dayInfo.dayEps.length} eps` : '';
+        colHeader.appendChild(countSpan);
+
+        colEl.appendChild(colHeader);
+
+        // Column Body (Episode Cards Container)
+        const colBody = document.createElement('div');
+        colBody.className = 'day-column-body';
 
         // If today: calculate chronological insertion of the Blue "NOW" Indicator
         let indicatorInserted = false;
 
-        dayEps.forEach(ep => {
+        dayInfo.dayEps.forEach(ep => {
             const epAirDate = new Date(ep.airingAt);
 
             // Insert live NOW indicator before the first upcoming episode of today
-            if (isToday && !indicatorInserted && epAirDate > now) {
+            if (dayInfo.isToday && !indicatorInserted && epAirDate > now) {
                 colBody.appendChild(createTimeIndicatorElement());
                 indicatorInserted = true;
             }
@@ -425,13 +466,13 @@ function renderSchedule() {
         });
 
         // If today and all episodes have aired or no episodes, append indicator at bottom
-        if (isToday && !indicatorInserted) {
+        if (dayInfo.isToday && !indicatorInserted) {
             colBody.appendChild(createTimeIndicatorElement());
         }
 
         colEl.appendChild(colBody);
         grid.appendChild(colEl);
-    }
+    });
 
     // On mobile / tablet viewports, smoothly center today's column in the viewport
     setTimeout(() => {
