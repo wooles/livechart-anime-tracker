@@ -2,7 +2,9 @@
     --bg-primary: #0a0c10;
     --bg-header: #12151c;
     --bg-column: #12151c;
+    --bg-column-header: #151821;
     --bg-column-today: #141926;
+    --bg-column-today-header: #182236;
     --bg-card: #1c202a;
     --bg-card-hover: #262c3a;
     --border-color: #232733;
@@ -15,6 +17,8 @@
     --text-main: #f3f4f6;
     --text-dim: #9ca3af;
     --text-muted: #6b7280;
+    --card-title-color: #e5e7eb;
+    --poster-bg: #111;
     --radius-sm: 4px;
     --radius-md: 6px;
     --radius-lg: 10px;
@@ -22,19 +26,27 @@
 }
 
 [data-theme="light"] {
-    --bg-primary: #f3f4f6;
+    --bg-primary: #f1f5f9;
     --bg-header: #ffffff;
     --bg-column: #ffffff;
+    --bg-column-header: #f8fafc;
     --bg-column-today: #eff6ff;
-    --bg-card: #f9fafb;
-    --bg-card-hover: #f3f4f6;
-    --border-color: #e5e7eb;
+    --bg-column-today-header: #dbeafe;
+    --bg-card: #ffffff;
+    --bg-card-hover: #f1f5f9;
+    --border-color: #e2e8f0;
     --border-today: #2563eb;
     --accent-blue: #2563eb;
-    --accent-blue-glow: rgba(37, 99, 235, 0.2);
-    --text-main: #111827;
-    --text-dim: #4b5563;
-    --text-muted: #9ca3af;
+    --accent-blue-hover: #1d4ed8;
+    --accent-blue-glow: rgba(37, 99, 235, 0.15);
+    --accent-green: #059669;
+    --accent-purple: #7c3aed;
+    --text-main: #0f172a;
+    --text-dim: #475569;
+    --text-muted: #64748b;
+    --card-title-color: #0f172a;
+    --poster-bg: #e2e8f0;
+    --shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
 }
 
 * {
@@ -303,11 +315,11 @@ html, body {
 .day-column.is-today {
     background: var(--bg-column-today);
     border-color: var(--border-today);
-    box-shadow: 0 0 12px rgba(59, 130, 246, 0.15);
+    box-shadow: 0 0 12px var(--accent-blue-glow);
 }
 
 .day-column-header {
-    background: #151821;
+    background: var(--bg-column-header);
     padding: 8px 10px;
     border-bottom: 1px solid var(--border-color);
     flex-shrink: 0;
@@ -317,8 +329,8 @@ html, body {
 }
 
 .day-column.is-today .day-column-header {
-    background: #182236;
-    border-bottom-color: var(--accent-blue);
+    background: var(--bg-column-today-header);
+    border-bottom-color: var(--border-today);
 }
 
 .day-header-title {
@@ -422,7 +434,7 @@ html, body {
     background: var(--bg-card-hover);
     border-color: var(--accent-blue);
     transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow);
 }
 
 .anime-card.status-plantowatch {
@@ -439,7 +451,7 @@ html, body {
     object-fit: cover;
     border-radius: 3px;
     flex-shrink: 0;
-    background: #111;
+    background: var(--poster-bg);
 }
 
 .card-content {
@@ -482,7 +494,7 @@ html, body {
 .card-title {
     font-size: 0.76rem;
     font-weight: 600;
-    color: #e5e7eb;
+    color: var(--card-title-color);
     line-height: 1.2;
     overflow: hidden;
     display: -webkit-box;
