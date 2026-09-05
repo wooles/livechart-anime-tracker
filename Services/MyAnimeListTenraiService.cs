@@ -118,12 +118,7 @@ namespace LiveChartTracker.Services
             var processedMalIds = new HashSet<int>();
 
             // 1. Fetch exact live broadcasting schedules via AniList schedule network for currently airing / upcoming shows
-            var relevantAiringShows = watchingList.Where(w => 
-                w.malId > 0 && 
-                (w.airingStatus == 1 || w.airingStatus == 3 || (w.startDate.HasValue && w.startDate.Value.Year >= year - 1 && (!w.endDate.HasValue || w.endDate.Value >= startOfMonth.DateTime)))
-            ).ToList();
-
-            var malIds = relevantAiringShows.Select(w => w.malId).Distinct().ToList();
+            var malIds = watchingList.Where(w => w.malId > 0).Select(w => w.malId).Distinct().ToList();
 
             try
             {
@@ -215,15 +210,17 @@ query ($page: Int, $malIds: [Int]) {
                     }
                 }
 
-                // Project consistent weekly broadcast schedules from nextAiringEpisode anchors
+                // Strictly include verified broadcast schedules from official AniList data
                 foreach (var kvp in aniMediaMap)
                 {
                     int malId = kvp.Key;
                     var media = kvp.Value;
                     var nextEpNode = media["nextAiringEpisode"];
                     var userEntry = watchingList.FirstOrDefault(w => w.malId == malId);
+                    string mediaStatus = media["status"]?.ToString() ?? "";
 
-                    if (nextEpNode != null)
+                    // Only include anime that are actively RELEASING or confirmed upcoming from official AniList schedule
+                    if (nextEpNode != null && (mediaStatus == "RELEASING" || mediaStatus == "NOT_YET_RELEASED"))
                     {
                         int anchorEp = nextEpNode["episode"]?.GetValue<int>() ?? 1;
                         long anchorAirSec = nextEpNode["airingAt"]?.GetValue<long>() ?? 0;
@@ -231,7 +228,7 @@ query ($page: Int, $malIds: [Int]) {
 
                         var anchorAirUtc = DateTimeOffset.FromUnixTimeSeconds(anchorAirSec).ToUniversalTime();
 
-                        // Project weeks backward and forward across the month window (-12 to +12 weeks)
+                        // Calculate episodes forward and backward across the month window (-12 to +12 weeks)
                         int maxProjectedEp = totalEp ?? (anchorEp > 26 ? anchorEp + 12 : Math.Max(anchorEp + 4, 13));
                         for (int k = -12; k <= 12; k++)
                         {
@@ -278,107 +275,7 @@ query ($page: Int, $malIds: [Int]) {
                 Console.WriteLine($"[Warning] Failed to fetch exact live schedules: {ex.Message}");
             }
 
-            // 2. Fallback for any remaining shows that didn't have AniList schedule records
-            int daysInMonth = DateTime.DaysInMonth(year, month);
-            var monthStart = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
-            var monthEnd = new DateTime(year, month, daysInMonth, 23, 59, 59, DateTimeKind.Utc);
-
-            foreach (var item in watchingList)
-            {
-                if (processedMalIds.Contains(item.malId)) continue; // Already matched with exact airing time!
-                if (item.airingStatus == 2) continue; // Skip finished/completed shows (MAL status 2 = Finished)
-
-                if (item.airingStatus == 1) // Currently Airing (MAL status 1 = Airing)
-                {
-                    if (item.endDate.HasValue && item.endDate.Value < monthStart) continue;
-                    if (item.startDate.HasValue && item.startDate.Value > monthEnd) continue;
-                }
-                else if (item.airingStatus == 3) // Not yet aired (MAL status 3 = Not Yet Aired)
-                {
-                    if (!item.startDate.HasValue || item.startDate.Value < monthStart || item.startDate.Value > monthEnd) continue;
-                }
-                else
-                {
-                    continue;
-                }
-
-                DateTime start = item.startDate ?? monthStart;
-                if (start > monthEnd) continue;
-                if (item.endDate.HasValue && item.endDate.Value < monthStart) continue;
-
-                // Handle single release media (Movies / Specials / OVAs / ONAs without weekly schedules)
-                if (item.mediaType == "Movie" || item.mediaType == "Special" || item.mediaType == "OVA")
-                {
-                    if (item.startDate.HasValue && item.startDate.Value >= monthStart && item.startDate.Value <= monthEnd)
-                    {
-                        var airUtc = new DateTimeOffset(item.startDate.Value, TimeSpan.Zero);
-                        episodes.Add(new CalendarMonthEpisode
-                        {
-                            Id = $"mal_{item.malId}_m",
-                            MalId = item.malId,
-                            TitleEnglish = item.title,
-                            TitleRomaji = item.title,
-                            CoverImage = item.img,
-                            Format = item.mediaType,
-                            TotalEpisodes = item.totalEp > 0 ? item.totalEp : 1,
-                            EpisodeNumber = 1,
-                            AiringAt = airUtc,
-                            AiringTimeFormatted = airUtc.ToString("HH:mm"),
-                            AiringDateFormatted = airUtc.ToString("yyyy-MM-dd"),
-                            TimeUntilAiringSeconds = (long)(airUtc - DateTimeOffset.UtcNow).TotalSeconds,
-                            AverageScore = item.score > 0 ? item.score : null,
-                            MalUrl = $"https://myanimelist.net/anime/{item.malId}",
-                            SiteUrl = $"https://myanimelist.net/anime/{item.malId}",
-                            UserProgress = item.watched,
-                            UserScore = item.score > 0 ? item.score : null,
-                            ListStatus = item.listStatus ?? "Watching"
-                        });
-                    }
-                    continue;
-                }
-
-                DayOfWeek airDay = start.DayOfWeek;
-                int hourUtc = 14; // Standard 16:00 Polish Time
-                int minUtc = (item.malId % 2 == 0) ? 0 : 30;
-
-                for (int day = 1; day <= daysInMonth; day++)
-                {
-                    var currentDate = new DateTime(year, month, day, hourUtc, minUtc, 0, DateTimeKind.Utc);
-                    if (item.startDate.HasValue && currentDate < item.startDate.Value.Date) continue;
-                    if (item.endDate.HasValue && currentDate > item.endDate.Value.Date.AddDays(1)) continue;
-
-                    if (currentDate.DayOfWeek == airDay)
-                    {
-                        int weeksDiff = (int)Math.Max(1, Math.Ceiling((currentDate - start).TotalDays / 7.0));
-                        int epNumber = Math.Min(item.totalEp > 0 ? item.totalEp : 999, weeksDiff);
-
-                        var airUtc = new DateTimeOffset(currentDate, TimeSpan.Zero);
-
-                        episodes.Add(new CalendarMonthEpisode
-                        {
-                            Id = $"mal_{item.malId}_d{day}",
-                            MalId = item.malId,
-                            TitleEnglish = item.title,
-                            TitleRomaji = item.title,
-                            CoverImage = item.img,
-                            Format = item.mediaType,
-                            TotalEpisodes = item.totalEp > 0 ? item.totalEp : null,
-                            EpisodeNumber = epNumber,
-                            AiringAt = airUtc,
-                            AiringTimeFormatted = airUtc.ToString("HH:mm"),
-                            AiringDateFormatted = airUtc.ToString("yyyy-MM-dd"),
-                            TimeUntilAiringSeconds = (long)(airUtc - DateTimeOffset.UtcNow).TotalSeconds,
-                            AverageScore = item.score > 0 ? item.score : null,
-                            MalUrl = $"https://myanimelist.net/anime/{item.malId}",
-                            SiteUrl = $"https://myanimelist.net/anime/{item.malId}",
-                            UserProgress = item.watched,
-                            UserScore = item.score > 0 ? item.score : null,
-                            ListStatus = item.listStatus ?? "Watching"
-                        });
-                    }
-                }
-            }
-
+            // Return strictly confirmed episodes verified by AniList official data
             return (avatarUrl, episodes.OrderBy(e => e.AiringAt).ToList(), totalWatching);
         }
 
@@ -402,8 +299,14 @@ query ($page: Int, $malIds: [Int]) {
             {
                 try
                 {
-                    var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-                    var response = await _httpClient.PostAsync(GraphQlEndpoint, content);
+                    using var req = new HttpRequestMessage(HttpMethod.Post, GraphQlEndpoint);
+                    req.Headers.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36");
+                    req.Headers.TryAddWithoutValidation("Origin", "https://anilist.co");
+                    req.Headers.TryAddWithoutValidation("Referer", "https://anilist.co/");
+                    req.Headers.TryAddWithoutValidation("Accept", "application/json");
+                    req.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+                    var response = await _httpClient.SendAsync(req);
 
                     if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
                     {
@@ -412,7 +315,12 @@ query ($page: Int, $malIds: [Int]) {
                         continue;
                     }
 
-                    if (!response.IsSuccessStatusCode) return null;
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        var errStr = await response.Content.ReadAsStringAsync();
+                        Console.WriteLine($"[AniList GraphQL Error] HTTP {response.StatusCode}: {errStr}");
+                        return null;
+                    }
 
                     var jsonString = await response.Content.ReadAsStringAsync();
                     var node = JsonNode.Parse(jsonString);
@@ -422,8 +330,9 @@ query ($page: Int, $malIds: [Int]) {
                     }
                     return node;
                 }
-                catch
+                catch (Exception ex)
                 {
+                    Console.WriteLine($"[AniList GraphQL Exception] attempt {attempt}: {ex.Message}");
                     if (attempt == 2) return null;
                     await Task.Delay(1000);
                 }

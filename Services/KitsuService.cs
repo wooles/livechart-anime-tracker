@@ -259,16 +259,28 @@ query ($aniIds: [Int], $malIds: [Int]) {
             {
                 try
                 {
-                    var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-                    var response = await _httpClient.PostAsync(GraphQlEndpoint, content);
+                    using var req = new HttpRequestMessage(HttpMethod.Post, GraphQlEndpoint);
+                    req.Headers.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36");
+                    req.Headers.TryAddWithoutValidation("Origin", "https://anilist.co");
+                    req.Headers.TryAddWithoutValidation("Referer", "https://anilist.co/");
+                    req.Headers.TryAddWithoutValidation("Accept", "application/json");
+                    req.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+                    var response = await _httpClient.SendAsync(req);
 
                     if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
                     {
-                        await Task.Delay(1500 * (attempt + 1));
+                        var retryAfter = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(1.5 * (attempt + 1));
+                        await Task.Delay(retryAfter);
                         continue;
                     }
 
-                    if (!response.IsSuccessStatusCode) return null;
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        var errStr = await response.Content.ReadAsStringAsync();
+                        Console.WriteLine($"[AniList GraphQL Error in KitsuService] HTTP {response.StatusCode}: {errStr}");
+                        return null;
+                    }
 
                     var jsonString = await response.Content.ReadAsStringAsync();
                     var node = JsonNode.Parse(jsonString);
@@ -278,8 +290,9 @@ query ($aniIds: [Int], $malIds: [Int]) {
                     }
                     return node;
                 }
-                catch
+                catch (Exception ex)
                 {
+                    Console.WriteLine($"[AniList GraphQL Exception in KitsuService] attempt {attempt}: {ex.Message}");
                     if (attempt == 2) return null;
                     await Task.Delay(1000);
                 }
