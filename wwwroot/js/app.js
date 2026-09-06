@@ -762,6 +762,12 @@ function renderSchedule() {
         grid.appendChild(colEl);
     });
 
+    // Auto-fit title font sizes so long titles aren't truncated
+    autoFitCardTitles();
+    requestAnimationFrame(() => {
+        autoFitCardTitles();
+    });
+
     // On mobile / tablet viewports, smoothly center today's column in the viewport
     setTimeout(() => {
         const todayCol = grid.querySelector('.day-column.is-today');
@@ -769,6 +775,74 @@ function renderSchedule() {
             todayCol.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
         }
     }, 60);
+}
+
+function autoFitCardTitles() {
+    const cards = document.querySelectorAll('.anime-card');
+    if (!cards.length) return;
+
+    cards.forEach(card => {
+        const titleEl = card.querySelector('.card-title');
+        const contentEl = card.querySelector('.card-content');
+        if (!titleEl || !contentEl) return;
+
+        // Reset previous inline styles so we measure against stylesheet baseline
+        titleEl.style.fontSize = '';
+        titleEl.style.lineHeight = '';
+        titleEl.style.webkitLineClamp = '';
+
+        const contentHeight = contentEl.clientHeight;
+        if (contentHeight <= 0) return;
+
+        const timeRow = contentEl.querySelector('.card-time-row');
+        const footer = contentEl.querySelector('.card-footer');
+
+        const timeRowHeight = timeRow ? timeRow.offsetHeight : 12;
+        const footerHeight = footer ? footer.offsetHeight : 12;
+        const maxTitleHeight = Math.max(14, contentHeight - timeRowHeight - footerHeight - 2);
+
+        // Dynamically allow up to 3 lines on larger cards, 2 on medium/dense, 1 on ultra-dense
+        let maxLines = 2;
+        if (maxTitleHeight >= 32) {
+            maxLines = 3;
+        } else if (maxTitleHeight >= 18) {
+            maxLines = 2;
+        } else {
+            maxLines = 1;
+        }
+        titleEl.style.webkitLineClamp = String(maxLines);
+
+        function checkOverflow() {
+            return (titleEl.scrollHeight > titleEl.clientHeight + 1) || 
+                   (titleEl.scrollWidth > titleEl.clientWidth + 1) ||
+                   (titleEl.offsetHeight > maxTitleHeight);
+        }
+
+        if (checkOverflow()) {
+            const baseSize = parseFloat(window.getComputedStyle(titleEl).fontSize) || 12;
+            const minSize = 7.5; // Minimum readable font size in px
+            let low = minSize;
+            let high = baseSize;
+            let best = minSize;
+
+            // Binary search in 5 steps to find the largest font size that fits without truncating
+            for (let i = 0; i < 5; i++) {
+                const mid = (low + high) / 2;
+                titleEl.style.fontSize = `${mid.toFixed(1)}px`;
+                titleEl.style.lineHeight = mid <= 9.5 ? '1.08' : '1.14';
+
+                if (checkOverflow()) {
+                    high = mid; // Still overflows, try smaller
+                } else {
+                    best = mid; // Fits! Record and test if slightly larger also fits
+                    low = mid;
+                }
+            }
+
+            titleEl.style.fontSize = `${best.toFixed(1)}px`;
+            titleEl.style.lineHeight = best <= 9.5 ? '1.08' : '1.14';
+        }
+    });
 }
 
 function createTimeIndicatorElement() {
@@ -845,6 +919,7 @@ function createAnimeCard(ep) {
     const titleEl = document.createElement('div');
     titleEl.className = 'card-title';
     titleEl.textContent = displayTitle;
+    titleEl.title = displayTitle;
     content.appendChild(titleEl);
 
     // Bottom row: Format + Bookmark
