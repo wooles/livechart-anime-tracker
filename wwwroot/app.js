@@ -83,8 +83,7 @@ function updateHiddenAnimeButton() {
     const count = state.hiddenAnimeMap ? state.hiddenAnimeMap.size : 0;
     const labelEl = document.getElementById('hiddenAnimeLabel');
     if (labelEl) {
-        const isPolish = (navigator.language && navigator.language.startsWith('pl')) || !navigator.language;
-        labelEl.textContent = isPolish ? `Ukryte (${count})` : `Hidden (${count})`;
+        labelEl.textContent = `Hidden (${count})`;
     }
     const countModalEl = document.getElementById('hiddenModalCount');
     if (countModalEl) {
@@ -160,15 +159,14 @@ function renderHiddenAnimeList() {
 
     listEl.innerHTML = '';
     const items = Array.from(state.hiddenAnimeMap.values());
-    const isPolish = (navigator.language && navigator.language.startsWith('pl')) || !navigator.language;
 
     if (items.length === 0) {
         listEl.innerHTML = `
             <div class="hidden-empty-state">
                 <div class="hidden-empty-icon">✨</div>
-                <p><strong>${isPolish ? 'Brak ukrytych anime' : 'No hidden anime'}</strong></p>
+                <p><strong>No hidden anime</strong></p>
                 <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
-                    ${isPolish ? 'Kliknij ikonkę przekreślonego oka na kafelku, aby ukryć wybraną serię.' : 'Click the eye icon on any episode card to hide that series.'}
+                    Click the eye icon on any episode card to hide that series from the schedule.
                 </p>
             </div>
         `;
@@ -180,7 +178,7 @@ function renderHiddenAnimeList() {
 
     if (restoreAllBtn) {
         restoreAllBtn.style.display = 'inline-flex';
-        restoreAllBtn.textContent = isPolish ? 'Przywróć wszystkie' : 'Restore All';
+        restoreAllBtn.textContent = 'Restore All';
     }
 
     // Sort alphabetically by current title preference
@@ -236,8 +234,8 @@ function renderHiddenAnimeList() {
 
         const restoreBtn = document.createElement('button');
         restoreBtn.className = 'btn-restore';
-        restoreBtn.innerHTML = `↩️ ${isPolish ? 'Przywróć' : 'Restore'}`;
-        restoreBtn.title = isPolish ? 'Przywróć tę serię do kalendarza' : 'Restore this series to schedule';
+        restoreBtn.innerHTML = `↩️ Restore`;
+        restoreBtn.title = 'Restore this series to schedule';
         restoreBtn.addEventListener('click', () => {
             restoreHiddenAnime(item.key);
         });
@@ -784,7 +782,7 @@ function createAnimeCard(ep) {
 
     const hideBtn = document.createElement('button');
     hideBtn.className = 'card-hide-btn';
-    hideBtn.title = 'Ukryj tę serię / Hide this anime';
+    hideBtn.title = 'Hide this series from schedule';
     hideBtn.setAttribute('aria-label', 'Hide anime');
     hideBtn.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3.5"/><line x1="21" y1="3" x2="3" y2="21"/></svg>`;
     hideBtn.addEventListener('click', (e) => {

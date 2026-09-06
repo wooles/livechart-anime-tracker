@@ -45,9 +45,9 @@
             </form>
 
             <div class="header-actions">
-                <button id="hiddenAnimeBtn" class="btn btn-outline btn-sm" title="Zarządzaj ukrytymi anime / Manage hidden anime">
+                <button id="hiddenAnimeBtn" class="btn btn-outline btn-sm" title="Manage hidden anime">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px; vertical-align: -2px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3.5"/><line x1="21" y1="3" x2="3" y2="21"/></svg>
-                    <span id="hiddenAnimeLabel">Ukryte (0)</span>
+                    <span id="hiddenAnimeLabel">Hidden (0)</span>
                 </button>
                 <button id="titleLangToggle" class="btn btn-outline btn-sm" title="Toggle Title Language (English / Romaji)">
                     <span id="titleLangLabel">🌐 English</span>
@@ -142,19 +142,19 @@
             <div class="modal-header">
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3.5"/><line x1="21" y1="3" x2="3" y2="21"/></svg>
-                    <h3 id="hiddenModalTitle">Ukryte serie (<span id="hiddenModalCount">0</span>)</h3>
+                    <h3 id="hiddenModalTitle">Hidden Anime (<span id="hiddenModalCount">0</span>)</h3>
                 </div>
                 <button class="modal-close" onclick="closeHiddenAnimeModal()">&times;</button>
             </div>
             <div class="modal-body">
-                <p id="hiddenModalDesc" class="hidden-modal-desc">Ukryte serie nie pojawiają się w harmonogramie kalendarza. Kliknij <strong>Przywróć</strong>, aby ponownie wyświetlać je w ramówce.</p>
+                <p id="hiddenModalDesc" class="hidden-modal-desc">Hidden series do not appear in the calendar schedule. Click <strong>Restore</strong> to display them in the schedule again.</p>
                 <div id="hiddenAnimeList" class="hidden-anime-list">
                     <!-- Populated dynamically via JS -->
                 </div>
             </div>
             <div class="modal-footer hidden-modal-footer">
-                <button id="restoreAllHiddenBtn" class="btn btn-primary btn-sm" onclick="restoreAllHiddenAnime()">Przywróć wszystkie</button>
-                <button class="btn btn-outline btn-sm" onclick="closeHiddenAnimeModal()">Zamknij</button>
+                <button id="restoreAllHiddenBtn" class="btn btn-primary btn-sm" onclick="restoreAllHiddenAnime()">Restore All</button>
+                <button class="btn btn-outline btn-sm" onclick="closeHiddenAnimeModal()">Close</button>
             </div>
         </div>
     </div>
