@@ -553,12 +553,11 @@ html, body {
     line-height: 1.2;
     overflow: hidden;
     display: -webkit-box;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     word-break: break-word;
     overflow-wrap: break-word;
     margin: auto 0;
-    transition: font-size 0.08s ease;
 }
 
 .card-footer {
@@ -619,7 +618,7 @@ html, body {
 .schedule-columns-container.density-normal .card-title {
     font-size: 0.76rem;
     line-height: 1.22;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 3;
 }
 .schedule-columns-container.density-normal .card-footer {
     font-size: 0.65rem;

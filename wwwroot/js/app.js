@@ -807,7 +807,8 @@ function autoFitCardTitles() {
         const contentEl = card.querySelector('.card-content');
         if (!titleEl || !contentEl) return;
 
-        // Reset previous inline styles so we measure against stylesheet baseline
+        // Reset previous inline styles so we measure against stylesheet baseline without transition delays
+        titleEl.style.transition = 'none';
         titleEl.style.fontSize = '';
         titleEl.style.lineHeight = '';
         titleEl.style.webkitLineClamp = '';
@@ -818,51 +819,63 @@ function autoFitCardTitles() {
         const timeRow = contentEl.querySelector('.card-time-row');
         const footer = contentEl.querySelector('.card-footer');
 
-        const timeRowHeight = timeRow ? timeRow.offsetHeight : 12;
-        const footerHeight = footer ? footer.offsetHeight : 12;
-        const maxTitleHeight = Math.max(14, contentHeight - timeRowHeight - footerHeight - 2);
+        const timeRowHeight = timeRow ? timeRow.offsetHeight : 14;
+        const footerHeight = footer ? footer.offsetHeight : 14;
+        // Available vertical space for the title inside card-content
+        const availableHeight = Math.max(14, contentHeight - timeRowHeight - footerHeight - 1);
 
-        // Dynamically allow up to 3 lines on larger cards, 2 on medium/dense, 1 on ultra-dense
-        let maxLines = 2;
-        if (maxTitleHeight >= 32) {
-            maxLines = 3;
-        } else if (maxTitleHeight >= 18) {
-            maxLines = 2;
-        } else {
-            maxLines = 1;
+        const baseSize = parseFloat(window.getComputedStyle(titleEl).fontSize) || 12;
+        const minSize = 7.5; // Minimum readable font size in px
+
+        function checkFit(size) {
+            const lhRatio = size <= 9.5 ? 1.08 : (size <= 11 ? 1.14 : 1.18);
+            const linePx = size * lhRatio;
+            // Dynamically calculate the maximum lines that can fit vertically in available space
+            const maxLines = Math.max(1, Math.floor(availableHeight / linePx));
+
+            titleEl.style.fontSize = `${size.toFixed(1)}px`;
+            titleEl.style.lineHeight = String(lhRatio);
+            titleEl.style.webkitLineClamp = String(maxLines);
+
+            const overflows = (titleEl.scrollHeight > titleEl.clientHeight + 1) || 
+                              (titleEl.scrollWidth > titleEl.clientWidth + 1) ||
+                              (titleEl.offsetHeight > availableHeight);
+
+            return { overflows, maxLines, lhRatio };
         }
-        titleEl.style.webkitLineClamp = String(maxLines);
 
-        function checkOverflow() {
-            return (titleEl.scrollHeight > titleEl.clientHeight + 1) || 
-                   (titleEl.scrollWidth > titleEl.clientWidth + 1) ||
-                   (titleEl.offsetHeight > maxTitleHeight);
+        // 1. Check if the full title already fits at default stylesheet size
+        const baseCheck = checkFit(baseSize);
+        if (!baseCheck.overflows) {
+            titleEl.style.fontSize = '';
+            titleEl.style.lineHeight = '';
+            titleEl.style.webkitLineClamp = String(baseCheck.maxLines);
+            return;
         }
 
-        if (checkOverflow()) {
-            const baseSize = parseFloat(window.getComputedStyle(titleEl).fontSize) || 12;
-            const minSize = 7.5; // Minimum readable font size in px
-            let low = minSize;
-            let high = baseSize;
-            let best = minSize;
+        // 2. Binary search to find the largest readable font size in [minSize, baseSize] that fits
+        let low = minSize;
+        let high = baseSize;
+        let best = minSize;
+        let bestLines = baseCheck.maxLines;
+        let bestLh = baseCheck.lhRatio;
 
-            // Binary search in 5 steps to find the largest font size that fits without truncating
-            for (let i = 0; i < 5; i++) {
-                const mid = (low + high) / 2;
-                titleEl.style.fontSize = `${mid.toFixed(1)}px`;
-                titleEl.style.lineHeight = mid <= 9.5 ? '1.08' : '1.14';
-
-                if (checkOverflow()) {
-                    high = mid; // Still overflows, try smaller
-                } else {
-                    best = mid; // Fits! Record and test if slightly larger also fits
-                    low = mid;
-                }
+        for (let i = 0; i < 6; i++) {
+            const mid = (low + high) / 2;
+            const res = checkFit(mid);
+            if (res.overflows) {
+                high = mid; // Still overflows, try smaller font
+            } else {
+                best = mid; // Fits! Record and try slightly larger font
+                bestLines = res.maxLines;
+                bestLh = res.lhRatio;
+                low = mid;
             }
-
-            titleEl.style.fontSize = `${best.toFixed(1)}px`;
-            titleEl.style.lineHeight = best <= 9.5 ? '1.08' : '1.14';
         }
+
+        titleEl.style.fontSize = `${best.toFixed(1)}px`;
+        titleEl.style.lineHeight = String(bestLh);
+        titleEl.style.webkitLineClamp = String(bestLines);
     });
 }
 
