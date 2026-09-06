@@ -651,19 +651,66 @@ function renderSchedule() {
         });
     }
 
-    // Dynamic density scaling based on max episode count and available viewport height
-    const availableHeight = Math.max(300, window.innerHeight - 150);
-    const slotHeight = maxVisibleEps > 0 ? (availableHeight / maxVisibleEps) : 100;
+    // Dynamic uniform card height & density scaling based on available viewport height
+    const scheduleWrapper = document.querySelector('.schedule-wrapper');
+    const wrapperHeight = (scheduleWrapper && scheduleWrapper.clientHeight > 100)
+        ? scheduleWrapper.clientHeight
+        : Math.max(300, window.innerHeight - 85);
 
+    // Calculate maximum workload across visible days
+    // Count the live NOW time indicator (if present on today) as equivalent to ~0.35 of a slot
+    let maxWorkload = 0;
+    daysData.forEach(dayInfo => {
+        let load = dayInfo.dayEps.length;
+        if (dayInfo.isToday && load > 0) {
+            load += 0.35;
+        }
+        if (load > maxWorkload) {
+            maxWorkload = load;
+        }
+    });
+
+    // Space taken by day column header (~34px), body padding (~8px), and wrapper paddings
+    const headerAndPadding = 46;
+    const availableBodyHeight = Math.max(200, wrapperHeight - headerAndPadding);
+
+    let cardHeight;
+    let cardGap = 4;
     let densityClass = 'density-normal';
-    if (slotHeight < 45 || maxVisibleEps >= 14) {
-        densityClass = 'density-ultra-dense';
-    } else if (slotHeight < 62 || maxVisibleEps >= 10) {
-        densityClass = 'density-dense';
-    } else if (slotHeight < 80 || maxVisibleEps >= 7) {
-        densityClass = 'density-compact';
+
+    if (maxWorkload <= 0) {
+        cardHeight = 90;
+        densityClass = 'density-normal';
+        cardGap = 5;
+    } else {
+        // First estimate slot height with a 4px gap
+        const estSlot = (availableBodyHeight - (maxWorkload - 1) * 4) / maxWorkload;
+
+        if (estSlot >= 76) {
+            densityClass = 'density-normal';
+            cardGap = 5;
+            const target = (availableBodyHeight - (maxWorkload - 1) * cardGap) / maxWorkload;
+            cardHeight = Math.min(94, Math.max(76, Math.floor(target)));
+        } else if (estSlot >= 60) {
+            densityClass = 'density-compact';
+            cardGap = 4;
+            const target = (availableBodyHeight - (maxWorkload - 1) * cardGap) / maxWorkload;
+            cardHeight = Math.max(60, Math.floor(target));
+        } else if (estSlot >= 46) {
+            densityClass = 'density-dense';
+            cardGap = 3;
+            const target = (availableBodyHeight - (maxWorkload - 1) * cardGap) / maxWorkload;
+            cardHeight = Math.max(46, Math.floor(target));
+        } else {
+            densityClass = 'density-ultra-dense';
+            cardGap = 2;
+            const target = (availableBodyHeight - (maxWorkload - 1) * cardGap) / maxWorkload;
+            cardHeight = Math.max(40, Math.floor(target));
+        }
     }
 
+    grid.style.setProperty('--card-height', `${cardHeight}px`);
+    grid.style.setProperty('--card-gap', `${cardGap}px`);
     grid.className = `schedule-columns-container ${densityClass}`;
 
     // Render 7 consecutive day columns

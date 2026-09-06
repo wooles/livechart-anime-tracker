@@ -353,10 +353,11 @@ html, body {
 .day-column-body {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 4px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--card-gap, 4px);
     position: relative;
 }
 
@@ -374,11 +375,13 @@ html, body {
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 4px 2px;
-    margin: 2px 0;
+    padding: 2px;
+    margin: 1px 0;
     flex-shrink: 0;
     position: relative;
     z-index: 5;
+    height: 22px;
+    box-sizing: border-box;
 }
 
 .time-indicator-pill {
@@ -420,21 +423,26 @@ html, body {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
-    padding: 5px;
+    padding: 5px 6px;
     display: flex;
     gap: 6px;
     cursor: pointer;
-    transition: all 0.12s ease;
+    transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
     text-decoration: none;
     color: inherit;
     position: relative;
+    height: var(--card-height, 88px);
+    min-height: var(--card-height, 88px);
+    max-height: var(--card-height, 88px);
+    box-sizing: border-box;
+    flex-shrink: 0;
+    overflow: hidden;
 }
 
 .anime-card:hover {
     background: var(--bg-card-hover);
     border-color: var(--accent-blue);
-    transform: translateY(-1px);
-    box-shadow: var(--shadow);
+    box-shadow: 0 2px 8px var(--accent-blue-glow);
 }
 
 .anime-card.status-plantowatch {
@@ -446,8 +454,11 @@ html, body {
 }
 
 .card-poster {
-    width: 40px;
-    height: 56px;
+    height: 100%;
+    width: auto;
+    aspect-ratio: 5 / 7;
+    max-width: 65px;
+    min-width: 22px;
     object-fit: cover;
     border-radius: 3px;
     flex-shrink: 0;
@@ -457,10 +468,12 @@ html, body {
 .card-content {
     flex: 1;
     min-width: 0;
+    height: 100%;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    gap: 2px;
+    gap: 1px;
+    overflow: hidden;
 }
 
 .card-time-row {
@@ -468,6 +481,8 @@ html, body {
     align-items: center;
     justify-content: space-between;
     gap: 4px;
+    flex-shrink: 0;
+    line-height: 1.1;
 }
 
 .card-time-actions {
@@ -490,6 +505,7 @@ html, body {
     border-radius: 3px;
     transition: all 0.15s ease;
     line-height: 1;
+    flex-shrink: 0;
 }
 
 .anime-card:hover .card-hide-btn {
@@ -511,12 +527,14 @@ html, body {
     font-size: 0.72rem;
     font-weight: 700;
     color: var(--text-main);
+    white-space: nowrap;
 }
 
 .card-countdown {
     font-size: 0.65rem;
     font-weight: 600;
     color: var(--text-dim);
+    white-space: nowrap;
 }
 
 .card-countdown.live {
@@ -537,6 +555,8 @@ html, body {
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
+    word-break: break-word;
+    margin: auto 0;
 }
 
 .card-footer {
@@ -545,16 +565,22 @@ html, body {
     justify-content: space-between;
     font-size: 0.65rem;
     color: var(--text-muted);
-    margin-top: 1px;
+    flex-shrink: 0;
+    line-height: 1.1;
+    margin-top: 0;
 }
 
 .card-ep-badge {
     font-weight: 600;
     color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .card-bookmark-icon {
     font-size: 0.75rem;
+    flex-shrink: 0;
 }
 
 .card-bookmark-icon.watching {
@@ -567,34 +593,64 @@ html, body {
 
 /* ==================== DYNAMIC ADAPTIVE DENSITY SCALING ==================== */
 
-/* Compact Density (7-9 eps or medium screens) */
+/* Normal Density (<= 7-8 eps or large screens) */
+.schedule-columns-container.density-normal {
+    gap: var(--card-gap, 5px);
+}
+.schedule-columns-container.density-normal .day-column-header {
+    padding: 7px 10px;
+}
+.schedule-columns-container.density-normal .day-column-body {
+    padding: 4px;
+    gap: var(--card-gap, 5px);
+}
+.schedule-columns-container.density-normal .anime-card {
+    padding: 5px 6px;
+    gap: 6px;
+}
+.schedule-columns-container.density-normal .card-air-time {
+    font-size: 0.72rem;
+}
+.schedule-columns-container.density-normal .card-countdown {
+    font-size: 0.65rem;
+}
+.schedule-columns-container.density-normal .card-title {
+    font-size: 0.76rem;
+    line-height: 1.22;
+    -webkit-line-clamp: 2;
+}
+.schedule-columns-container.density-normal .card-footer {
+    font-size: 0.65rem;
+}
+.schedule-columns-container.density-normal .card-hide-btn svg {
+    width: 13px;
+    height: 13px;
+}
+
+/* Compact Density (~9-11 eps or medium screens) */
 .schedule-columns-container.density-compact {
-    gap: 4px;
+    gap: var(--card-gap, 4px);
 }
 .schedule-columns-container.density-compact .day-column-header {
     padding: 6px 8px;
 }
 .schedule-columns-container.density-compact .day-column-body {
     padding: 3px;
-    gap: 3px;
+    gap: var(--card-gap, 4px);
 }
 .schedule-columns-container.density-compact .anime-card {
-    padding: 3px 4px;
+    padding: 4px 5px;
     gap: 5px;
-}
-.schedule-columns-container.density-compact .card-poster {
-    width: 32px;
-    height: 45px;
 }
 .schedule-columns-container.density-compact .card-air-time {
     font-size: 0.68rem;
 }
 .schedule-columns-container.density-compact .card-countdown {
-    font-size: 0.62rem;
+    font-size: 0.60rem;
 }
 .schedule-columns-container.density-compact .card-title {
-    font-size: 0.71rem;
-    line-height: 1.15;
+    font-size: 0.70rem;
+    line-height: 1.18;
     -webkit-line-clamp: 2;
 }
 .schedule-columns-container.density-compact .card-footer {
@@ -605,9 +661,9 @@ html, body {
     height: 12px;
 }
 
-/* Dense Density (10-13 eps - e.g. All Airing Anime / High Episode Count) */
+/* Dense Density (~12-14 eps - e.g. All Airing Anime / High Episode Count) */
 .schedule-columns-container.density-dense {
-    gap: 4px;
+    gap: var(--card-gap, 3px);
 }
 .schedule-columns-container.density-dense .day-column-header {
     padding: 4px 6px;
@@ -620,34 +676,25 @@ html, body {
 }
 .schedule-columns-container.density-dense .day-column-body {
     padding: 2px;
-    gap: 2px;
+    gap: var(--card-gap, 3px);
 }
 .schedule-columns-container.density-dense .anime-card {
-    padding: 2px 3px;
+    padding: 2px 4px;
     gap: 4px;
 }
-.schedule-columns-container.density-dense .card-poster {
-    width: 25px;
-    height: 35px;
-    border-radius: 2px;
-}
-.schedule-columns-container.density-dense .card-time-row {
-    gap: 2px;
-}
 .schedule-columns-container.density-dense .card-air-time {
-    font-size: 0.65rem;
+    font-size: 0.64rem;
 }
 .schedule-columns-container.density-dense .card-countdown {
-    font-size: 0.58rem;
+    font-size: 0.56rem;
 }
 .schedule-columns-container.density-dense .card-title {
-    font-size: 0.66rem;
-    line-height: 1.1;
+    font-size: 0.65rem;
+    line-height: 1.12;
     -webkit-line-clamp: 1;
 }
 .schedule-columns-container.density-dense .card-footer {
-    font-size: 0.56rem;
-    margin-top: 0;
+    font-size: 0.55rem;
 }
 .schedule-columns-container.density-dense .card-bookmark-icon {
     font-size: 0.65rem;
@@ -657,9 +704,9 @@ html, body {
     height: 11px;
 }
 
-/* Ultra-Dense Density (14+ eps) */
+/* Ultra-Dense Density (15+ eps) */
 .schedule-columns-container.density-ultra-dense {
-    gap: 3px;
+    gap: var(--card-gap, 2px);
 }
 .schedule-columns-container.density-ultra-dense .day-column-header {
     padding: 3px 5px;
@@ -672,34 +719,25 @@ html, body {
 }
 .schedule-columns-container.density-ultra-dense .day-column-body {
     padding: 2px;
-    gap: 2px;
+    gap: var(--card-gap, 2px);
 }
 .schedule-columns-container.density-ultra-dense .anime-card {
-    padding: 1px 2px;
+    padding: 2px 3px;
     gap: 3px;
 }
-.schedule-columns-container.density-ultra-dense .card-poster {
-    width: 20px;
-    height: 28px;
-    border-radius: 2px;
-}
-.schedule-columns-container.density-ultra-dense .card-time-row {
-    gap: 2px;
-}
 .schedule-columns-container.density-ultra-dense .card-air-time {
-    font-size: 0.60rem;
+    font-size: 0.58rem;
 }
 .schedule-columns-container.density-ultra-dense .card-countdown {
-    font-size: 0.54rem;
+    font-size: 0.52rem;
 }
 .schedule-columns-container.density-ultra-dense .card-title {
-    font-size: 0.60rem;
+    font-size: 0.58rem;
     line-height: 1.05;
     -webkit-line-clamp: 1;
 }
 .schedule-columns-container.density-ultra-dense .card-footer {
     font-size: 0.50rem;
-    margin-top: 0;
 }
 .schedule-columns-container.density-ultra-dense .card-bookmark-icon {
     font-size: 0.60rem;
