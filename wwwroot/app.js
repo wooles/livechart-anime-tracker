@@ -270,13 +270,21 @@ function initTheme() {
 function loadStoredUser() {
     const savedUser = localStorage.getItem('anime_cal_user');
     const savedPlat = localStorage.getItem('anime_cal_plat');
-    if (savedUser) {
-        state.username = savedUser;
-        document.getElementById('usernameInput').value = savedUser;
-    }
+    const userInput = document.getElementById('usernameInput');
+    const platSelect = document.getElementById('platformSelect');
     if (savedPlat) {
         state.platform = savedPlat;
-        document.getElementById('platformSelect').value = savedPlat;
+        if (platSelect) platSelect.value = savedPlat;
+    }
+    if (savedPlat === 'All') {
+        state.username = 'All Airing Anime';
+        if (userInput) {
+            userInput.value = 'All Airing Anime';
+            userInput.disabled = true;
+        }
+    } else if (savedUser) {
+        state.username = savedUser;
+        if (userInput) userInput.value = savedUser;
     }
 }
 
@@ -344,6 +352,21 @@ function setupEventListeners() {
     const platformSelect = document.getElementById('platformSelect');
     if (platformSelect) {
         platformSelect.addEventListener('change', () => {
+            const userInput = document.getElementById('usernameInput');
+            if (platformSelect.value === 'All') {
+                if (userInput) {
+                    if (userInput.value && userInput.value !== 'All Airing Anime') {
+                        userInput.dataset.prevUser = userInput.value;
+                    }
+                    userInput.value = 'All Airing Anime';
+                    userInput.disabled = true;
+                }
+            } else {
+                if (userInput && userInput.disabled) {
+                    userInput.disabled = false;
+                    userInput.value = userInput.dataset.prevUser || 'wooles';
+                }
+            }
             handleLoadCalendar(true);
         });
     }
@@ -482,13 +505,11 @@ async function handleLoadCalendar(showSpinner = true) {
     let user = document.getElementById('usernameInput').value.trim();
     const plat = document.getElementById('platformSelect').value;
 
-    if (!user) {
-        if (plat === 'All') {
-            user = 'All Airing Anime';
-        } else {
-            user = 'wooles';
-            document.getElementById('usernameInput').value = 'wooles';
-        }
+    if (plat === 'All') {
+        user = 'All Airing Anime';
+    } else if (!user || user === 'All Airing Anime') {
+        user = 'wooles';
+        document.getElementById('usernameInput').value = 'wooles';
     }
 
     state.username = user;
@@ -593,8 +614,8 @@ function renderSchedule() {
     const statsBar = document.getElementById('calendarStats');
     if (statsBar) {
         statsBar.classList.remove('hidden');
-        document.getElementById('statsUsername').textContent = state.username || 'wooles';
-        document.getElementById('statsPlatform').textContent = state.platform || 'MyAnimeList';
+        document.getElementById('statsUsername').textContent = (state.platform === 'All') ? 'All Airing Anime' : (state.username || 'wooles');
+        document.getElementById('statsPlatform').textContent = (state.platform === 'All') ? 'AniList Airing Schedule' : (state.platform || 'MyAnimeList');
         const count = state.calendarData?.totalWatchingAnime || state.allEpisodes.length || 0;
         document.getElementById('statsWatchingCount').textContent = count;
         
