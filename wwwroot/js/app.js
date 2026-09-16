@@ -300,6 +300,7 @@ function restoreLocalCache() {
             if (parsed && Array.isArray(parsed.episodes) && parsed.episodes.length > 0) {
                 state.allEpisodes = parsed.episodes;
                 state.loadedMonths = new Set(parsed.loadedMonths || []);
+                state.cacheTimestamp = parsed.time || 0;
                 if (parsed.calendarData) {
                     state.calendarData = parsed.calendarData;
                 } else {
@@ -321,11 +322,12 @@ function saveLocalCache() {
     try {
         if (!state.username || state.allEpisodes.length === 0) return;
         const cacheKey = `anime_cal_cache_${state.platform}_${state.username}`;
+        state.cacheTimestamp = Date.now();
         localStorage.setItem(cacheKey, JSON.stringify({
             episodes: state.allEpisodes,
             loadedMonths: Array.from(state.loadedMonths),
             calendarData: state.calendarData,
-            time: Date.now()
+            time: state.cacheTimestamp
         }));
     } catch (e) {
         console.warn("Storage quota exceeded or storage disabled:", e);
@@ -521,9 +523,20 @@ async function handleLoadCalendar(showSpinner = true) {
     if (showSpinner) {
         state.allEpisodes = [];
         state.loadedMonths.clear();
+        state.cacheTimestamp = 0;
         showLoading(`Loading anime schedule for ${state.username} (${state.platform})...`);
     } else {
         restoreLocalCache();
+    }
+
+    // Cache TTL: 15 minutes (900,000 ms)
+    const CACHE_TTL_MS = 15 * 60 * 1000;
+    const isCacheStale = !state.cacheTimestamp || (Date.now() - state.cacheTimestamp > CACHE_TTL_MS);
+    const shouldForceRefresh = showSpinner || isCacheStale;
+
+    if (shouldForceRefresh && !showSpinner) {
+        // Stale-while-revalidate: clear loaded months so fresh data is fetched in background
+        state.loadedMonths.clear();
     }
 
     try {
@@ -537,8 +550,8 @@ async function handleLoadCalendar(showSpinner = true) {
 
         // Fetch current month + next month concurrently in parallel
         await Promise.all([
-            fetchMonthData(y, m, false, showSpinner),
-            fetchMonthData(nextY, nextM, false, showSpinner)
+            fetchMonthData(y, m, false, shouldForceRefresh),
+            fetchMonthData(nextY, nextM, false, shouldForceRefresh)
         ]);
 
         renderSchedule();
@@ -580,6 +593,20 @@ async function fetchMonthData(year, month, reRender = true, forceRefresh = false
     const data = await response.json();
     state.calendarData = data;
     state.loadedMonths.add(monthKey);
+
+    if (forceRefresh) {
+        // Remove existing cached episodes for this target month so delayed/cancelled episodes are purged
+        state.allEpisodes = state.allEpisodes.filter(e => {
+            if (!e.airingDateFormatted) return true;
+            const parts = e.airingDateFormatted.split('-');
+            if (parts.length >= 2) {
+                const epYear = parseInt(parts[0], 10);
+                const epMonth = parseInt(parts[1], 10);
+                if (epYear === year && epMonth === month) return false;
+            }
+            return true;
+        });
+    }
 
     // Merge all episodes by unique identity
     (data.days || []).forEach(d => {

@@ -64,24 +64,24 @@ namespace LiveChartTracker.Services
                 case "all":
                 case "global":
                 case "season":
-                    (avatarUrl, episodes, totalWatching) = await _aniListService.GetSeasonalMonthEpisodesAsync(year, month);
+                    (avatarUrl, episodes, totalWatching) = await _aniListService.GetSeasonalMonthEpisodesAsync(year, month, refresh);
                     break;
                 case "anilist":
                     if (string.Equals(username, "all", StringComparison.OrdinalIgnoreCase))
                     {
-                        (avatarUrl, episodes, totalWatching) = await _aniListService.GetSeasonalMonthEpisodesAsync(year, month);
+                        (avatarUrl, episodes, totalWatching) = await _aniListService.GetSeasonalMonthEpisodesAsync(year, month, refresh);
                     }
                     else
                     {
-                        (avatarUrl, episodes, totalWatching) = await _aniListService.GetWatchingMonthEpisodesAsync(username, year, month);
+                        (avatarUrl, episodes, totalWatching) = await _aniListService.GetWatchingMonthEpisodesAsync(username, year, month, refresh);
                     }
                     break;
                 case "kitsu":
-                    (avatarUrl, episodes, totalWatching) = await _kitsuService.GetWatchingMonthEpisodesAsync(username, year, month);
+                    (avatarUrl, episodes, totalWatching) = await _kitsuService.GetWatchingMonthEpisodesAsync(username, year, month, refresh);
                     break;
                 case "myanimelist":
                 case "mal":
-                    (avatarUrl, episodes, totalWatching) = await _malTenraiService.GetWatchingMonthEpisodesAsync(username, year, month);
+                    (avatarUrl, episodes, totalWatching) = await _malTenraiService.GetWatchingMonthEpisodesAsync(username, year, month, refresh);
                     break;
                 default:
                     throw new ArgumentException($"Unsupported platform: {platform}. Available: All, MyAnimeList, AniList, Kitsu");
