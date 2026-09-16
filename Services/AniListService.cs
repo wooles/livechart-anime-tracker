@@ -71,6 +71,11 @@ query ($userName: String) {
             month
             day
           }
+          endDate {
+            year
+            month
+            day
+          }
           averageScore
           genres
           studios(isMain: true) {
@@ -154,12 +159,51 @@ query ($userName: String) {
                 return (avatarUrl, new List<CalendarMonthEpisode>(), 0);
             }
 
-            var mediaIds = watchingEntries.Keys.ToList();
-
             var startOfMonth = new DateTimeOffset(year, month, 1, 0, 0, 0, TimeSpan.Zero).AddDays(-7);
             var endOfMonth = new DateTimeOffset(year, month, 1, 0, 0, 0, TimeSpan.Zero).AddMonths(1).AddDays(7);
             long startSec = startOfMonth.ToUnixTimeSeconds();
             long endSec = endOfMonth.ToUnixTimeSeconds();
+
+            // Filter candidate media IDs that could air in target month
+            var candidateMediaIds = new List<int>();
+            foreach (var (mId, entry) in watchingEntries)
+            {
+                var media = entry.media;
+                string status = media["status"]?.ToString() ?? "";
+
+                if (status == "RELEASING" || status == "NOT_YET_RELEASED" || media["nextAiringEpisode"] != null)
+                {
+                    candidateMediaIds.Add(mId);
+                    continue;
+                }
+
+                int? sYear = media["startDate"]?["year"]?.GetValue<int?>();
+                int? sMonth = media["startDate"]?["month"]?.GetValue<int?>();
+                int? sDay = media["startDate"]?["day"]?.GetValue<int?>();
+
+                int? eYear = media["endDate"]?["year"]?.GetValue<int?>();
+                int? eMonth = media["endDate"]?["month"]?.GetValue<int?>();
+                int? eDay = media["endDate"]?["day"]?.GetValue<int?>();
+
+                DateTime? startDt = (sYear.HasValue && sMonth.HasValue) ? new DateTime(sYear.Value, sMonth.Value, sDay ?? 1) : null;
+                DateTime? endDt = (eYear.HasValue && eMonth.HasValue) ? new DateTime(eYear.Value, eMonth.Value, eDay ?? DateTime.DaysInMonth(eYear.Value, eMonth.Value)) : null;
+
+                if (endDt.HasValue && endDt.Value < startOfMonth.Date)
+                {
+                    continue;
+                }
+                if (startDt.HasValue && startDt.Value > endOfMonth.Date)
+                {
+                    continue;
+                }
+
+                candidateMediaIds.Add(mId);
+            }
+
+            if (candidateMediaIds.Count == 0)
+            {
+                candidateMediaIds = watchingEntries.Keys.ToList();
+            }
 
             var episodesList = new List<CalendarMonthEpisode>();
 
@@ -215,7 +259,7 @@ query ($page: Int, $perPage: Int, $mediaId_in: [Int], $airingAt_greater: Int, $a
 
             int page = 1;
             bool hasNextPage = true;
-            var idChunks = mediaIds.Chunk(50).ToList();
+            var idChunks = candidateMediaIds.Chunk(50).ToList();
 
             foreach (var chunk in idChunks)
             {
